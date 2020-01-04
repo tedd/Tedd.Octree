@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using Microsoft.VisualBasic.CompilerServices;
 using Tedd.SpanUtils;
+using SType = System.UInt32;
 
 namespace Tedd.Octree
 {
@@ -32,7 +35,7 @@ namespace Tedd.Octree
             return GetInt(ref span, ux, uy, uz);
         }
 
-        private static UInt32 GetInt(ref Span<byte> span, UInt32 x, UInt32 y, UInt32 z)
+        private static SType GetInt(ref Span<byte> span, UInt32 x, UInt32 y, UInt32 z)
         {
             var size = (Int32)span.MoveReadSize(out _);    // Read size of this leaf.
             span = span.Slice(0, size - 3); // Lock us to this leaf.
@@ -87,7 +90,7 @@ namespace Tedd.Octree
             //  - 4 bytes type descriptor
             //  - 1 byte subnode descriptor (8 bits indicating if subnode has subnodes)
 
-            // Level 0: 1 node
+            // Level 0: 1 node (special case)
             // Level 1: 8 nodes
             // Level 2: 8*8 nodes
             // Level 3: 8*8*8 nodes
@@ -96,73 +99,66 @@ namespace Tedd.Octree
             // (8^1+8^2+8^3+8^4+8^5)*9=337032 bytes
             //var size = (int)(8 * ((Math.Pow(8, _levels) - 1)) / (8 - 1)) * 9 + 9;
             var rootNode = new Node();
-            var result = BuildInt(memory, rootNode, _levels, 0);
-            _data = new Memory<byte>(new byte[rootNode.Size]);
+            var l = _levels - 1;
+            var size = BuildInt(memory, rootNode, l, 0);
+
+            if (rootNode.MonoType)
+                // Monotype
+                _data = new Memory<byte>(new byte[1 + rootNode.Value.MeasureWriteSize()]);
+            else
+                // Other
+                _data = new Memory<byte>(new byte[1 + size]);
+
             var span = _data.Span;
+
+            byte header = 0;
+            // In case of root node being monotype then we simply store the header+monotype and nothing more. This means that a cube of any size with same types is stored as low as 2 bytes (and max 5 bytes): header+monotype
+            header.SetBit(0, rootNode.MonoType);
+            span.MoveWrite(header);
+
+            // We added 1 byte extra as leafdescriptor
             CreateInt(ref span, rootNode);
-
-
-
 
         }
 
         private void CreateInt(ref Span<byte> data, Node node)
         {
-            // We copy node structure to memory
+            // The simple case of monotypes
+            if (node.MonoType)
+            {
+                data.MoveWriteSize(node.Value);
+                return;
+            }
 
             var leafDesc = data.Slice(0, 1);
+            byte leafDescByte = 0;
             data.Move(1);
 
-            Byte leafDescByte = 0;
-            // Count how many positions we need
-            var posCount = 0;
-            var levelHeader = data.Slice(0, 3 * 8);
-
-            var dataPos = 0;
-            // For every position pointer we write it is relative, which means we need to measure the remainders
             for (var i = 0; i < 8; i++)
             {
                 var c = node.Children[i];
-
-                // Set bit to 1 if tree is terminated here
-                leafDescByte.SetBit(i, c.MonoType);
-
-                // Count monotypes
-                //if (!c.MonoType)
-                //    posCount++;
-
                 if (c.MonoType)
-                    dataPos += data.MoveWriteSize(c.Value);
+                    data.MoveWriteSize(c.Value);
                 else
-                {
-                    // Write pointer to next datapos
-                    var s = data.MoveWriteSize((UInt32)dataPos);
-                    dataPos += s + (int)c.Size;
-                }
+                    data.MoveWriteSize(c.RelativePos);
+
+                leafDescByte.SetBit(i, c.MonoType);
             }
 
-            // Set up position pointers
-            Span<byte> posPointer = data.Slice(0, 3 * posCount);
-            data.Move(3 * 8);
+            leafDesc[0] = leafDescByte;
 
-            // Following pointers, write all monotypes directly
             for (var i = 0; i < 8; i++)
             {
                 var c = node.Children[i];
-                if (c.MonoType)
-                    data.MoveWrite((UInt32)c.Value);
-            }
-
-            // Then child nodes
-            for (var i = 0; i < 8; i++)
-            {
-                var cNode = node.Children[i];
-
+                if (!c.MonoType)
+                    // Write body of this subnode
+                    CreateInt(ref data, c);
             }
         }
 
         private class Node
         {
+            // TODO: Could be struct?
             public Node[] Children;
             public UInt32 Value;
             public UInt32 Size;
@@ -170,10 +166,10 @@ namespace Tedd.Octree
             public UInt32 RelativePos;
         }
 
-        private UInt32 BuildInt(in Span<UInt32> memory, Node node, int level, int pos)
+        private UInt32 BuildInt(in Span<SType> memory, Node node, int level, int pos)
         {
             UInt32 size = 0;
-            UInt32 cNodeType = 0;
+            SType cNodeType = 0;
             node.Children = new Node[8];
             for (var i = 0; i < 8; i++)
             {
@@ -185,16 +181,14 @@ namespace Tedd.Octree
                 var x = ((i >> 2) & 1) << (_levels + _levels);
                 var y = ((i >> 1) & 1) << _levels;
                 var z = (i & 1);
-                //var childPos = (pos << 1) | x | y | z;
-                var childPos = (pos << 3) | x | y | z;
+                var childPos = (pos << 1) | x | y | z;
+                //var childPos = (pos << 3) | i;
 
                 if (level == 0)
                 {
                     // Last level so we just get value
                     cNode.Value = memory[childPos];
                     cNode.Size = (UInt32)cNode.Value.MeasureWriteSize();
-                    // This is default, its a monotype
-                    //cNode.MonoType = true;
 
                     // Check if all at this level is only one type, if not set parent type to not monotype
                     if (i == 0)
@@ -206,15 +200,16 @@ namespace Tedd.Octree
                 {
                     // Recursively go down until level 0
                     // TODO: We could use stackalloc here and only copy out if not monotype, would saves all allocations that are monotype
-                    cNode.Size = BuildInt(memory, cNode, --level, childPos);
+                    var l = level - 1;
+                    cNode.Size = BuildInt(memory, cNode, l, childPos);
 
                     // If level above us is not monotype then we are not too
                     if (!cNode.MonoType)
                         node.MonoType = false;
                 }
 
-                // Add to size we will return
-                size += cNode.Size;
+                // Accumulated size of all children
+                //size += cNode.Size;
 
             }
 
@@ -229,11 +224,13 @@ namespace Tedd.Octree
                 node.Value = node.Children[0].Value;
                 node.Children = null;
                 // So our size is simply the value
-                node.Size = (UInt32)node.Value.MeasureWriteSize();
-                size = node.Size;
+                node.Size = 0;
+                size = (UInt32)node.Value.MeasureWriteSize();
             }
             else
             {
+                size = 1; // Leaf descriptor
+
                 // This is not monotype, so we calculate the relative start address of each non-monotype child
                 var cp = (UInt32)0;
                 for (var i = 0; i < 8; i++)
@@ -247,7 +244,7 @@ namespace Tedd.Octree
                 }
                 // The pointer also must contain the size of the following node pointers since it must jump across them
                 var rh = 0;
-                for (var i = 7; i >= 0; i++)
+                for (var i = 7; i >= 0; i--)
                 {
                     // Measure size of all remaining pointers and values
                     var c = node.Children[i];
@@ -258,11 +255,19 @@ namespace Tedd.Octree
                         // Add to current pos
                         c.RelativePos += (UInt32)rh;
                         // And that number is then added to size of next
-                        rh += c.RelativePos.MeasureWriteSize();
+                        var sm = c.RelativePos.MeasureWriteSize();
+                        rh += sm;
+                        size += (UInt32)sm;
                     }
 
+                    size += c.Size;
                 }
+
+
+                // If we have children we also need a pointer
+                //size++;
             }
+
 
             return size;
         }
