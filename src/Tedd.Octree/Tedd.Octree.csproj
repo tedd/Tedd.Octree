@@ -1,7 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+    <Authors>Tedd Hansen</Authors>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Description>Compact cache-friendly read-only Octree. Uses cotinous memory and compact integer representations to minimize memory footprint.</Description>
+    <Copyright>Tedd Hansen</Copyright>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/tedd/Tedd.Octree</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tedd/Tedd.Octree</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+    <PackageTags>Octree</PackageTags>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -15,7 +24,14 @@
   <ItemGroup>
     <PackageReference Include="Tedd.BitUtils" Version="1.0.5" />
     <PackageReference Include="Tedd.ObjectPool" Version="1.0.1" />
-    <PackageReference Include="Tedd.SpanUtils" Version="1.0.6" />
+    <PackageReference Include="Tedd.SpanUtils" Version="1.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>

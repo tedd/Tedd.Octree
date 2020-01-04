@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
 using Microsoft.VisualBasic.CompilerServices;
@@ -25,6 +26,11 @@ namespace Tedd.Octree
         {
             var span = _data.Span;
 
+            var header = span.MoveReadByte();
+            if (header.IsBitSet(0))
+                // This is a monotype
+                return span.ReadSize(out _);
+            
             var ux = (UInt32)x;
             var uy = (UInt32)y;
             var uz = (UInt32)z;
@@ -37,47 +43,20 @@ namespace Tedd.Octree
 
         private static SType GetInt(ref Span<byte> span, UInt32 x, UInt32 y, UInt32 z)
         {
-            var size = (Int32)span.MoveReadSize(out _);    // Read size of this leaf.
-            span = span.Slice(0, size - 3); // Lock us to this leaf.
+            var leafDesc = span.MoveReadByte();
 
-            // Read node header
-            var leafs = span.MoveReadByte();
-            var type = span.MoveReadSize(out _); // TODO: This is used for mipmap.
+            // Our target at this level
+            var targetNode = (int)(((x & 1) << 2) | ((y & 1) << 1) | (z & 1)); 
+            // Skip the other nodes
+            span.MoveSize(targetNode);
 
-            // Node number we are looking for at this level
-            var targetNode = (((x & 1) << 2) | ((y & 1) << 1) | (z & 1));
+            // If this is a monotype our search ends here
+            if (leafDesc.IsBitSet(targetNode))
+                return span.ReadSize(out _);
 
-            var jumpLength = 0;
-            var nodeSize = 0;
-            // Loop through leaf index.
-            // Index is stored before leaf data for cache locality. This results in a single jump as opposed to up to 8 jumps.
-            for (var i = 0; i <= 8; i++)
-            {
-                // Does this subnode contain leafs?
-                if (((leafs >> i) & 1) == 1)
-                {
-                    // We count jump length up until our target node
-                    if (i < targetNode)
-                        jumpLength += (Int32)span.MoveReadSize(out _);
-                    // We remember size of our target node so we can limit span to that (used as a free bounds verification)
-                    else if (i == targetNode)
-                        nodeSize = (Int32)span.MoveReadSize(out _);
-                    // After that we don't count, but we need to move forward until end of index before we make final jump.
-                    else
-                        _ = span.MoveReadSize(out _);
-                }
-                // No leafs in this subnode
-                else
-                {
-                    // If this is our target node we simply return value.
-                    if (i == targetNode)
-                        return (UInt32)span.MoveReadSize(out _);
-                    // Move forward
-                    _ = span.MoveReadSize(out _);
-                }
-            }
-            // We have now added all nodes up to our subnode, so we jump to correct location and limit span to that node
-            span = span.Slice(jumpLength, nodeSize);
+            // Not monotype, so this is a relative pointer and so we jump
+            var jmp = span.MoveReadSize(out _);
+            span.Move((int)jmp);
 
             // Then we dig into next level
             return GetInt(ref span, x >> 1, y >> 1, z >> 1);
@@ -208,19 +187,11 @@ namespace Tedd.Octree
                         node.MonoType = false;
                 }
 
-                // Accumulated size of all children
-                //size += cNode.Size;
-
             }
 
             // If all children were monotype we can remove them and set our value to that
             if (node.MonoType)
             {
-#if DEBUG
-                //if (node.Children != null)
-                //    throw new Exception("Shold be null");
-#endif
-
                 node.Value = node.Children[0].Value;
                 node.Children = null;
                 // So our size is simply the value
@@ -262,12 +233,7 @@ namespace Tedd.Octree
 
                     size += c.Size;
                 }
-
-
-                // If we have children we also need a pointer
-                //size++;
             }
-
 
             return size;
         }
