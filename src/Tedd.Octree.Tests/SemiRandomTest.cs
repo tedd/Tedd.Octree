@@ -22,9 +22,9 @@ namespace Tedd.Octree.Tests
         [InlineData(5)]
         [InlineData(6)]
         [InlineData(7)]
-        [InlineData(8)]
-        [InlineData(9)]
-        [InlineData(10)]
+        //[InlineData(8)]
+        //[InlineData(9)]
+        //[InlineData(10)]
         public void SemiRandomCubeTest(int levels)
         {
             var chunkSize = 1 << levels;
