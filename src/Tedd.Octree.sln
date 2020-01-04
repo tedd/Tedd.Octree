@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29519.181
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tedd.Octree", "Tedd.Octree\Tedd.Octree.csproj", "{84B6FE75-3805-42BF-84CF-C0440BCA3E81}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tedd.Octree.Tests", "Tedd.Octree.Tests\Tedd.Octree.Tests.csproj", "{D4BB33EF-F2D3-4A26-9CAD-81FBD20D2886}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{84B6FE75-3805-42BF-84CF-C0440BCA3E81}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84B6FE75-3805-42BF-84CF-C0440BCA3E81}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84B6FE75-3805-42BF-84CF-C0440BCA3E81}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84B6FE75-3805-42BF-84CF-C0440BCA3E81}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4BB33EF-F2D3-4A26-9CAD-81FBD20D2886}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4BB33EF-F2D3-4A26-9CAD-81FBD20D2886}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4BB33EF-F2D3-4A26-9CAD-81FBD20D2886}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4BB33EF-F2D3-4A26-9CAD-81FBD20D2886}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B927E161-B421-43DF-B1AF-A8430A4727F7}
+	EndGlobalSection
+EndGlobal
