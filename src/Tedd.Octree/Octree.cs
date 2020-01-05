@@ -30,7 +30,7 @@ namespace Tedd.Octree
             if (header.IsBitSet(0))
                 // This is a monotype
                 return span.ReadSize(out _);
-            
+
             var ux = (UInt32)x;
             var uy = (UInt32)y;
             var uz = (UInt32)z;
@@ -38,28 +38,31 @@ namespace Tedd.Octree
             uy = uy.ReverseBitsCopy() >> (32 - _levels);
             uz = uz.ReverseBitsCopy() >> (32 - _levels);
 
-            return GetInt(ref span, ux, uy, uz);
-        }
+            for (var i = 0; i < _levels; i++)
+            {
+                var leafDesc = span.MoveReadByte();
 
-        private static SType GetInt(ref Span<byte> span, UInt32 x, UInt32 y, UInt32 z)
-        {
-            var leafDesc = span.MoveReadByte();
+                // Our target at this level
+                var targetNode = (int)(((ux & 1) << 2) | ((uy & 1) << 1) | (uz & 1));
+                // Skip the other nodes
+                span.MoveSize(targetNode);
 
-            // Our target at this level
-            var targetNode = (int)(((x & 1) << 2) | ((y & 1) << 1) | (z & 1)); 
-            // Skip the other nodes
-            span.MoveSize(targetNode);
+                // If this is a monotype our search ends here
+                if (leafDesc.IsBitSet(targetNode))
+                    return span.ReadSize(out _);
 
-            // If this is a monotype our search ends here
-            if (leafDesc.IsBitSet(targetNode))
-                return span.ReadSize(out _);
+                // Not monotype, so this is a relative pointer and so we jump
+                var jmp = span.MoveReadSize(out _);
+                span.Move((int)jmp);
 
-            // Not monotype, so this is a relative pointer and so we jump
-            var jmp = span.MoveReadSize(out _);
-            span.Move((int)jmp);
+                // Then we dig into next level
+                ux >>= 1;
+                uy >>= 1;
+                uz >>= 1;
+            }
 
-            // Then we dig into next level
-            return GetInt(ref span, x >> 1, y >> 1, z >> 1);
+            // We should never get this far
+            throw new Exception("Error reading octree data structure.");
         }
 
         public void Build(Span<UInt32> memory)

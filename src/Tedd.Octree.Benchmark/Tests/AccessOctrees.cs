@@ -9,7 +9,7 @@ namespace Tedd.Octree.Benchmark.Tests
 
     [MemoryDiagnoser]
     [TailCallDiagnoser]
-    [EtwProfiler]
+    //[EtwProfiler]
     [ConcurrencyVisualizerProfiler]
     [NativeMemoryProfiler]
     [ThreadingDiagnoser]
@@ -95,7 +95,7 @@ namespace Tedd.Octree.Benchmark.Tests
                 DebugSum = (UInt32)((x << (Levels + Levels))
                          | (y << Levels)
                          | (z));
-                DebugSum = _data[ac];
+                DebugSum = _data[_accessPos];
             }
         }
 

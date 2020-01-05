@@ -10,6 +10,17 @@ namespace Tedd.Octree.Benchmark
         {
             //var summary1 = BenchmarkRunner.Run<BuildOctrees>();
             var summary2 = BenchmarkRunner.Run<AccessOctrees>();
+
+            //foreach (var levels in new[] { 1, 2, 3, 4, 5, 6, 7 })
+            //{
+            //    var ao = new AccessOctrees()
+            //    {
+            //        AccessTimes = 1000,
+            //        Levels = levels
+            //    };
+            //    ao.Setup();
+            //    ao.AccessArray();
+            //}
         }
     }
 }
