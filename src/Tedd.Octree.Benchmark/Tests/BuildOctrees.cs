@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Diagnosers;
@@ -33,11 +34,11 @@ namespace Tedd.Octree.Benchmark.Tests
 
         private UInt32[] _data;
 
-        [Params(2, 3, 4, 5, 6)]
+        [Params(6)]//2, 3, 4, 5,
         public int Levels;
 
         private uint[] _dataSparse;
-        private Octree _octreeSparse;
+        private uint[] _dataMonotype;
 
         [GlobalSetup]
         public void Setup()
@@ -52,10 +53,10 @@ namespace Tedd.Octree.Benchmark.Tests
             _dataSparse = new UInt32[chunkSize * chunkSize * chunkSize];
             // Fill with random data
             for (var i = 0; i < _dataSparse.Length; i++)
-                _dataSparse[i] = (UInt32)(rnd.Next(0, 3) & 0x3FFFFFFF);
+                _dataSparse[i] = (UInt32)(rnd.Next(0, 2) & 0x3FFFFFFF);
 
-            _octreeSparse = new Octree(Levels);
-            _octreeSparse.Build(new Span<UInt32>(_dataSparse));
+            _dataMonotype = new UInt32[chunkSize * chunkSize * chunkSize];
+            Array.Fill(_dataMonotype, (UInt32)18);
 
         }
 
@@ -71,6 +72,34 @@ namespace Tedd.Octree.Benchmark.Tests
         {
             var octree = new Octree(Levels);
             octree.Build(new Span<UInt32>(_dataSparse));
+        }
+
+        [Benchmark]
+        public void BuildOctreeMonotype()
+        {
+            var octree = new Octree(Levels);
+            octree.Build(new Span<UInt32>(_dataMonotype));
+        }
+
+        [Benchmark]
+        public void BuildOctreeDev()
+        {
+            var octree = new OctreeDev(Levels);
+            octree.Build(new Span<UInt32>(_data));
+        }
+
+        [Benchmark]
+        public void BuildOctreeDevSparse()
+        {
+            var octree = new OctreeDev(Levels);
+            octree.Build(new Span<UInt32>(_dataSparse));
+        }
+
+        [Benchmark]
+        public void BuildOctreeDevMonotype()
+        {
+            var octree = new OctreeDev(Levels);
+            octree.Build(new Span<UInt32>(_dataMonotype));
         }
 
         [Benchmark(Baseline = true)]

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -10,12 +11,12 @@ using SType = System.UInt32;
 
 namespace Tedd.Octree
 {
-    public class Octree
+    public class OctreeDev
     {
         private Memory<byte> _data;
         private readonly int _levels;
 
-        public Octree(int levels)
+        public OctreeDev(int levels)
         {
             _levels = levels;
         }
@@ -81,9 +82,9 @@ namespace Tedd.Octree
             // Level 5: 8*8*8*8*8 nodes
             // (8^1+8^2+8^3+8^4+8^5)*9=337032 bytes
             //var size = (int)(8 * ((Math.Pow(8, _levels) - 1)) / (8 - 1)) * 9 + 9;
-            var rootNode = new Node();
+            var rootNode = new Node() { MonoType = true };
             var l = _levels - 1;
-            var size = BuildInt(memory, rootNode, l, 0);
+            var size = BuildInt(memory, ref rootNode, l, 0);
 
             if (rootNode.MonoType)
                 // Monotype
@@ -100,11 +101,11 @@ namespace Tedd.Octree
             span.MoveWrite(header);
 
             // We added 1 byte extra as leafdescriptor
-            CreateInt(ref span, rootNode);
+            CreateInt(ref span, ref rootNode);
 
         }
 
-        private void CreateInt(ref Span<byte> data, Node node)
+        private void CreateInt(ref Span<byte> data, ref Node node)
         {
             // The simple case of monotypes
             if (node.MonoType)
@@ -135,30 +136,32 @@ namespace Tedd.Octree
                 var c = node.Children[i];
                 if (!c.MonoType)
                     // Write body of this subnode
-                    CreateInt(ref data, c);
+                    CreateInt(ref data, ref node.Children[i]);
             }
         }
 
-        private class Node
+        [DebuggerDisplay("Monotype={MonoType}, Value={Value}, ChildrenCount={Children.Length}, Size={Size}, RelativePos={RelativePos}")]
+        private struct Node
         {
             // TODO: Could be struct?
             public Node[] Children;
             public UInt32 Value;
             public UInt32 Size;
-            public bool MonoType = true;
+            public bool MonoType;
             public UInt32 RelativePos;
         }
 
-        private UInt32 BuildInt(in Span<SType> memory, Node node, int level, int pos)
+        private UInt32 BuildInt(in Span<SType> memory, ref Node node, int level, int pos)
         {
             UInt32 size = 0;
             SType cNodeType = 0;
-            node.Children = new Node[8];
+
+            //node.Children = new Node[8];
+            Node prevNode = default;
             for (var i = 0; i < 8; i++)
             {
                 // Create child node
-                var cNode = new Node();
-                node.Children[i] = cNode;
+                var cNode = new Node() { MonoType = true };
 
                 // calculate position in structure
                 var x = ((i >> 2) & 1) << (_levels + _levels);
@@ -172,31 +175,40 @@ namespace Tedd.Octree
                     // Last level so we just get value
                     cNode.Value = memory[childPos];
                     cNode.Size = (UInt32)cNode.Value.MeasureWriteSize();
-
-                    // Check if all at this level is only one type, if not set parent type to not monotype
-                    if (i == 0)
-                        cNodeType = cNode.Value;
-                    if (cNodeType != cNode.Value)
-                        node.MonoType = false;
                 }
                 else
                 {
                     // Recursively go down until level 0
-                    // TODO: We could use stackalloc here and only copy out if not monotype, would saves all allocations that are monotype
-                    var l = level - 1;
-                    cNode.Size = BuildInt(memory, cNode, l, childPos);
-
-                    // If level above us is not monotype then we are not too
-                    if (!cNode.MonoType)
-                        node.MonoType = false;
+                    cNode.Size = BuildInt(memory, ref cNode, level -1, childPos);
                 }
 
+                // Check if all at this level is only one type, if not set parent type to not monotype
+                if (i == 0)
+                    cNodeType = cNode.Value;
+
+                if (node.MonoType && (cNodeType != cNode.Value || !cNode.MonoType))
+                {
+                    node.MonoType = false;
+
+                    // We need to create array + populate it up to this point
+                    node.Children = new Node[8];
+                    // Up until now all has been same type, fill in
+                    for (var c = 0; c < i; c++)
+                        node.Children[c] = prevNode;
+                }
+
+                if (!node.MonoType)
+                    node.Children[i] = cNode;
+                
+                // Remember in case we need to fill in
+                if (node.MonoType)
+                    prevNode = cNode;
             }
 
             // If all children were monotype we can remove them and set our value to that
             if (node.MonoType)
             {
-                node.Value = node.Children[0].Value;
+                node.Value = cNodeType;
                 node.Children = null;
                 // So our size is simply the value
                 node.Size = 0;
@@ -213,7 +225,7 @@ namespace Tedd.Octree
                     var c = node.Children[i];
                     if (!c.MonoType)
                     {
-                        c.RelativePos = cp;
+                        node.Children[i].RelativePos = cp;
                         cp += c.Size;
                     }
                 }
@@ -228,9 +240,9 @@ namespace Tedd.Octree
                     else
                     {
                         // Add to current pos
-                        c.RelativePos += (UInt32)rh;
+                        node.Children[i].RelativePos += (UInt32)rh;
                         // And that number is then added to size of next
-                        var sm = c.RelativePos.MeasureWriteSize();
+                        var sm = node.Children[i].RelativePos.MeasureWriteSize();
                         rh += sm;
                         size += (UInt32)sm;
                     }

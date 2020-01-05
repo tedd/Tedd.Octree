@@ -1,0 +1,21 @@
+....
+BenchmarkDotNet=v0.12.0, OS=Windows 10.0.18363
+AMD Ryzen 9 3950X, 1 CPU, 32 logical and 16 physical cores
+.NET Core SDK=3.1.100
+  [Host]    : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+  OutOfProc : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+
+Job=OutOfProc  Jit=RyuJit  Platform=X64  
+Runtime=.NET Core 3.1  Force=True  LaunchCount=1  
+....
+[options="header"]
+|===
+|                  Method|  Levels|         Mean|      Error|     StdDev|          Min|          Max|       Median|          P95|          P90|  Iterations|      Op/s|  Ratio|  RatioSD|  Baseline|      Gen 0|      Gen 1|     Gen 2|   Allocated|  TotalIssues/Op|  BranchInstructions/Op|  BranchMispredictions/Op
+|             BuildOctree|       6|  22,629.4 us|  130.80 us|  122.35 us|  22,383.1 us|  22,772.8 us|  22,640.1 us|  22,771.7 us|  22,768.3 us|       15.00|     44.19|  86.68|     1.15|        No|  2062.5000|  1156.2500|  281.2500|  16430945 B|      37,011,194|             14,515,160|                  203,623
+|       BuildOctreeSparse|       6|  22,238.7 us|  125.50 us|  117.39 us|  22,010.1 us|  22,414.9 us|  22,259.8 us|  22,367.0 us|  22,345.7 us|       15.00|     44.97|  85.18|     1.02|        No|  2000.0000|  1093.7500|  218.7500|  15618896 B|      42,609,281|             15,989,097|                  305,686
+|     BuildOctreeMonotype|       6|   2,547.6 us|   50.23 us|   51.58 us|   2,497.3 us|   2,634.2 us|   2,520.9 us|   2,626.5 us|   2,623.0 us|       17.00|    392.53|   9.78|     0.27|        No|  1824.2188|    11.7188|         -|  15279308 B|       6,333,517|              3,062,359|                   33,999
+|          BuildOctreeDev|       6|  12,102.9 us|   47.25 us|   44.19 us|  12,042.5 us|  12,193.2 us|  12,091.4 us|  12,184.9 us|  12,168.4 us|       15.00|     82.62|  46.36|     0.60|        No|  1203.1250|   718.7500|  250.0000|   9240328 B|      22,005,268|              8,407,038|                  120,298
+|    BuildOctreeDevSparse|       6|  10,205.7 us|   53.20 us|   49.76 us|  10,117.7 us|  10,291.0 us|  10,213.4 us|  10,269.1 us|  10,258.4 us|       15.00|     97.98|  39.09|     0.49|        No|  1015.6250|   531.2500|   62.5000|   8373317 B|      20,851,152|              7,542,231|                  131,346
+|  BuildOctreeDevMonotype|       6|   4,035.2 us|    5.87 us|    4.90 us|   4,028.5 us|   4,042.4 us|   4,035.7 us|   4,041.1 us|   4,040.2 us|       13.00|    247.82|  15.48|     0.16|        No|          -|          -|         -|        82 B|       5,534,189|              1,589,220|                   27,072
+|              BuildArray|       6|     261.1 us|    2.92 us|    2.73 us|     254.7 us|     266.4 us|     261.0 us|     264.7 us|     263.9 us|       15.00|  3,829.83|   1.00|     0.00|       Yes|   182.6172|   182.6172|  182.6172|   1048610 B|         543,117|                222,399|                    2,720
+|===

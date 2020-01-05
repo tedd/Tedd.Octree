@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Tedd.Octree.Benchmark.Tests.BuildOctrees-20200105-152115</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet=v0.12.0, OS=Windows 10.0.18363
+AMD Ryzen 9 3950X, 1 CPU, 32 logical and 16 physical cores
+.NET Core SDK=3.1.100
+  [Host]    : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+  OutOfProc : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+</code></pre>
+<pre><code>Job=OutOfProc  Jit=RyuJit  Platform=X64  
+Runtime=.NET Core 3.1  Force=True  LaunchCount=1  
+</code></pre>
+
+<table>
+<thead><tr><th>          Method</th><th>Levels</th><th> Mean</th><th>Error</th><th>StdDev</th><th>  Min</th><th>  Max</th><th>Median</th><th>  P95</th><th>  P90</th><th>Iterations</th><th>Op/s</th><th>Ratio</th><th>RatioSD</th><th>Baseline</th><th>Gen 0</th><th>Gen 1</th><th>Gen 2</th><th>Allocated</th><th>TotalIssues/Op</th><th>BranchInstructions/Op</th><th>BranchMispredictions/Op</th>
+</tr>
+</thead><tbody><tr><td>BuildOctree</td><td>6</td><td>22,962.6 us</td><td>362.39 us</td><td>321.25 us</td><td>22,573.6 us</td><td>23,631.9 us</td><td>22,906.0 us</td><td>23,610.9 us</td><td>23,466.8 us</td><td>14.00</td><td>43.55</td><td>94.10</td><td>1.24</td><td>No</td><td>2062.5000</td><td>1156.2500</td><td>281.2500</td><td>15.67 MB</td><td>42,021,054</td><td>16,390,392</td><td>230,357</td>
+</tr><tr><td>BuildOctreeSparse</td><td>6</td><td>22,289.4 us</td><td>138.09 us</td><td>115.31 us</td><td>22,065.9 us</td><td>22,511.0 us</td><td>22,309.2 us</td><td>22,433.9 us</td><td>22,382.2 us</td><td>13.00</td><td>44.86</td><td>91.33</td><td>0.52</td><td>No</td><td>2000.0000</td><td>1093.7500</td><td>218.7500</td><td>14.9 MB</td><td>40,500,448</td><td>15,147,549</td><td>291,239</td>
+</tr><tr><td>BuildOctreeMonotype</td><td>6</td><td>2,634.5 us</td><td>49.06 us</td><td>50.38 us</td><td>2,521.4 us</td><td>2,681.0 us</td><td>2,651.3 us</td><td>2,678.7 us</td><td>2,673.8 us</td><td>17.00</td><td>379.57</td><td>10.79</td><td>0.21</td><td>No</td><td>1824.2188</td><td>11.7188</td><td>-</td><td>14.57 MB</td><td>6,360,887</td><td>3,065,627</td><td>33,501</td>
+</tr><tr><td>BuildOctreeDev</td><td>6</td><td>11,963.0 us</td><td>55.89 us</td><td>52.28 us</td><td>11,862.2 us</td><td>12,036.3 us</td><td>11,967.7 us</td><td>12,030.1 us</td><td>12,026.7 us</td><td>15.00</td><td>83.59</td><td>49.02</td><td>0.34</td><td>No</td><td>1218.7500</td><td>734.3750</td><td>265.6250</td><td>8.81 MB</td><td>22,861,339</td><td>8,759,382</td><td>123,902</td>
+</tr><tr><td>BuildOctreeDevSparse</td><td>6</td><td>10,479.3 us</td><td>79.13 us</td><td>66.08 us</td><td>10,355.7 us</td><td>10,606.8 us</td><td>10,488.4 us</td><td>10,561.9 us</td><td>10,531.9 us</td><td>13.00</td><td>95.43</td><td>42.94</td><td>0.41</td><td>No</td><td>1015.6250</td><td>531.2500</td><td>62.5000</td><td>8.04 MB</td><td>18,632,960</td><td>6,945,207</td><td>150,052</td>
+</tr><tr><td>BuildOctreeDevMonotype</td><td>6</td><td>4,186.3 us</td><td>82.30 us</td><td>115.37 us</td><td>4,057.8 us</td><td>4,459.1 us</td><td>4,153.9 us</td><td>4,402.4 us</td><td>4,361.7 us</td><td>27.00</td><td>238.87</td><td>17.03</td><td>0.42</td><td>No</td><td>960.9375</td><td>-</td><td>-</td><td>7.71 MB</td><td>8,249,347</td><td>2,719,083</td><td>39,133</td>
+</tr><tr><td>BuildArray</td><td>6</td><td>244.0 us</td><td>1.32 us</td><td>1.24 us</td><td>241.9 us</td><td>245.8 us</td><td>244.1 us</td><td>245.8 us</td><td>245.6 us</td><td>15.00</td><td>4,097.73</td><td>1.00</td><td>0.00</td><td>Yes</td><td>198.2422</td><td>198.2422</td><td>198.2422</td><td>1 MB</td><td>502,762</td><td>218,488</td><td>2,472</td>
+</tr></tbody></table>
+</body>
+</html>

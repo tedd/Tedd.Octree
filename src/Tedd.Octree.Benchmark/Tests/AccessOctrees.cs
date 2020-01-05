@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Diagnostics.Windows.Configs;
@@ -33,20 +34,22 @@ namespace Tedd.Octree.Benchmark.Tests
 
         private UInt32[] _data;
         private uint[] _dataSparse;
+        private uint[] _dataMonotype;
         private Octree _octree;
         private Octree _octreeSparse;
+        private Octree _octreeMonotype;
 
         private int _accessPos = 0;
         private int _levelMask;
         public UInt32 DebugSum;
 
-        [Params(2, 3, 4, 5, 6)]
+        [Params( 6)]//2, 3, 4, 5,
         public int Levels;
 
         [Params(1_000)]
         public int AccessTimes = 1000;
 
-
+        
 
         [GlobalSetup]
         public void Setup()
@@ -55,23 +58,38 @@ namespace Tedd.Octree.Benchmark.Tests
 
             var rnd = new Random();
             var chunkSize = 1 << Levels;
-            _data = new UInt32[chunkSize * chunkSize * chunkSize];
-            // Fill with random data
-            for (var i = 0; i < _data.Length; i++)
-                _data[i] = (UInt32)(rnd.NextUInt32() & 0x3FFFFFFF);
 
+            {
+                _data = new UInt32[chunkSize * chunkSize * chunkSize];
+                // Fill with random data
+                for (var i = 0; i < _data.Length; i++)
+                    _data[i] = (UInt32) (rnd.NextUInt32() & 0x3FFFFFFF);
+             
+                _octree = new Octree(Levels);
+                _octree.Build(new Span<UInt32>(_data));
+            }
 
-            _octree = new Octree(Levels);
-            _octree.Build(new Span<UInt32>(_data));
+            {
+                _dataSparse = new UInt32[chunkSize * chunkSize * chunkSize];
+                // Fill with random data
+                for (var i = 0; i < _dataSparse.Length; i++)
+                    _dataSparse[i] = (UInt32) (rnd.Next(0, 2) & 0x3FFFFFFF);
 
-            _dataSparse = new UInt32[chunkSize * chunkSize * chunkSize];
-            // Fill with random data
-            for (var i = 0; i < _dataSparse.Length; i++)
-                _dataSparse[i] = (UInt32)(rnd.Next(0, 3) & 0x3FFFFFFF);
+                _octreeSparse = new Octree(Levels);
+                _octreeSparse.Build(new Span<UInt32>(_dataSparse));
+            }
 
-            _octreeSparse = new Octree(Levels);
-            _octreeSparse.Build(new Span<UInt32>(_dataSparse));
+            {
+                _dataMonotype = new UInt32[chunkSize * chunkSize * chunkSize];
+                Array.Fill(_dataMonotype, (UInt32)18);
 
+                _octreeMonotype = new Octree(Levels);
+                _octreeMonotype.Build(new Span<UInt32>(_dataSparse));
+
+                if (_octreeMonotype.Data.Length > 10)
+                    throw new Exception("Monotype too big!");
+
+            }
 
         }
 
@@ -116,6 +134,27 @@ namespace Tedd.Octree.Benchmark.Tests
                                     | (z));
 
                 DebugSum = _octreeSparse.Get(x, y, z);
+            }
+        }
+
+ [Benchmark]
+        public void AccessOctreeMonotype()
+        {
+            for (var ac = 0; ac < AccessTimes; ac++)
+            {
+                _accessPos++;
+                if (_accessPos >= _data.Length)
+                    _accessPos = 0;
+
+                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
+                var y = (_accessPos >> Levels) & _levelMask;
+                var z = (_accessPos) & _levelMask;
+
+                DebugSum = (UInt32)((x << (Levels + Levels))
+                                    | (y << Levels)
+                                    | (z));
+
+                DebugSum = _octreeMonotype.Get(x, y, z);
             }
         }
 
