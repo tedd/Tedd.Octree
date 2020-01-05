@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.VisualBasic.CompilerServices;
 using Tedd.SpanUtils;
@@ -13,17 +16,18 @@ namespace Tedd.Octree
 {
     public class OctreeDev
     {
-        private Memory<byte> _data;
-        private readonly int _levels;
-
         public OctreeDev(int levels)
         {
             _levels = levels;
         }
 
+        private Memory<byte> _data;
+        private readonly int _levels;
+
+
         public ReadOnlyMemory<byte> Data => _data;
 
-        public UInt32 Get(int x, int y, int z)
+        public unsafe UInt32 Get(int x, int y, int z)
         {
             var span = _data.Span;
 
@@ -50,9 +54,13 @@ namespace Tedd.Octree
                 ux >>= 1;
                 uy >>= 1;
                 uz >>= 1;
-
+                ;
                 // Skip the other nodes
-                span.MoveSize(targetNode);
+                for (var n = 0; n < targetNode; n++)
+                {
+                    System.Runtime.Intrinsics.X86.Sse.Prefetch0(Unsafe.AsPointer(ref span[64]));
+                    span.MoveSize();
+                }
 
                 // If this is a monotype our search ends here
                 if (leafDesc.IsBitSet(targetNode))
@@ -81,32 +89,42 @@ namespace Tedd.Octree
             // Level 4: 8*8*8*8 nodes
             // Level 5: 8*8*8*8*8 nodes
             // (8^1+8^2+8^3+8^4+8^5)*9=337032 bytes
-            //var size = (int)(8 * ((Math.Pow(8, _levels) - 1)) / (8 - 1)) * 9 + 9;
-            var rootNode = new Node() { MonoType = true };
-            var l = _levels - 1;
-            var size = BuildInt(memory, ref rootNode, l, 0);
+            var memSize = (int)(8 * ((Math.Pow(8, _levels) - 1)) / (8 - 1)) * 20;
 
-            if (rootNode.MonoType)
-                // Monotype
-                _data = new Memory<byte>(new byte[1 + rootNode.Value.MeasureWriteSize()]);
-            else
-                // Other
-                _data = new Memory<byte>(new byte[1 + size]);
+            //var inGcRegion = GC.TryStartNoGCRegion(memSize, true);
+            try
+            {
+                var rootNode = new Node() { MonoType = true };
+                var size = BuildInt(memory, ref rootNode, _levels - 1, 0);
 
-            var span = _data.Span;
+                if (rootNode.MonoType)
+                    // Monotype
+                    _data = new Memory<byte>(new byte[1 + rootNode.Value.MeasureWriteSize()]);
+                else
+                    // Other
+                    _data = new Memory<byte>(new byte[1 + size]);
 
-            byte header = 0;
-            // In case of root node being monotype then we simply store the header+monotype and nothing more. This means that a cube of any size with same types is stored as low as 2 bytes (and max 5 bytes): header+monotype
-            header.SetBit(0, rootNode.MonoType);
-            span.MoveWrite(header);
+                var span = _data.Span;
 
-            // We added 1 byte extra as leafdescriptor
-            CreateInt(ref span, ref rootNode);
+                byte header = 0;
+                // In case of root node being monotype then we simply store the header+monotype and nothing more. This means that a cube of any size with same types is stored as low as 2 bytes (and max 5 bytes): header+monotype
+                header.SetBit(0, rootNode.MonoType);
+                span.MoveWrite(header);
+
+                // We added 1 byte extra as leafdescriptor
+                CreateInt(ref span, ref rootNode);
+            }
+            finally
+            {
+                //if (inGcRegion)
+                //    GC.EndNoGCRegion();
+            }
 
         }
 
         private void CreateInt(ref Span<byte> data, ref Node node)
         {
+
             // The simple case of monotypes
             if (node.MonoType)
             {
@@ -138,12 +156,13 @@ namespace Tedd.Octree
                     // Write body of this subnode
                     CreateInt(ref data, ref node.Children[i]);
             }
+            // Release to GC asap
+            node.Children = null;
         }
 
         [DebuggerDisplay("Monotype={MonoType}, Value={Value}, ChildrenCount={Children.Length}, Size={Size}, RelativePos={RelativePos}")]
         private struct Node
         {
-            // TODO: Could be struct?
             public Node[] Children;
             public UInt32 Value;
             public UInt32 Size;
@@ -179,7 +198,7 @@ namespace Tedd.Octree
                 else
                 {
                     // Recursively go down until level 0
-                    cNode.Size = BuildInt(memory, ref cNode, level -1, childPos);
+                    cNode.Size = BuildInt(memory, ref cNode, level - 1, childPos);
                 }
 
                 // Check if all at this level is only one type, if not set parent type to not monotype
@@ -199,7 +218,7 @@ namespace Tedd.Octree
 
                 if (!node.MonoType)
                     node.Children[i] = cNode;
-                
+
                 // Remember in case we need to fill in
                 if (node.MonoType)
                     prevNode = cNode;
@@ -253,6 +272,8 @@ namespace Tedd.Octree
 
             return size;
         }
+
+
 
 
     }

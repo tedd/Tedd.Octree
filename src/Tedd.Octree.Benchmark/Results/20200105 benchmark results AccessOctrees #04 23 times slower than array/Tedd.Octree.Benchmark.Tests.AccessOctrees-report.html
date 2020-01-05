@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Tedd.Octree.Benchmark.Tests.AccessOctrees-20200105-180903</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet=v0.12.0, OS=Windows 10.0.18363
+AMD Ryzen 9 3950X, 1 CPU, 32 logical and 16 physical cores
+.NET Core SDK=3.1.100
+  [Host]    : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+  OutOfProc : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+</code></pre>
+<pre><code>Job=OutOfProc  Jit=RyuJit  Platform=X64  
+Runtime=.NET Core 3.1  Force=True  LaunchCount=1  
+</code></pre>
+
+<table>
+<thead><tr><th>           Method</th><th>Levels</th><th>AccessTimes</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Median</th><th> Min</th><th> Max</th><th> P95</th><th> P90</th><th>Iterations</th><th>Op/s</th><th>Ratio</th><th>RatioSD</th><th>Baseline</th><th>Gen 0</th><th>Gen 1</th><th>Gen 2</th><th>Allocated</th><th>TotalIssues/Op</th><th>BranchInstructions/Op</th><th>BranchMispredictions/Op</th>
+</tr>
+</thead><tbody><tr><td>AccessOctree</td><td>6</td><td>1000</td><td>100.462 us</td><td>0.2243 us</td><td>0.1873 us</td><td>100.444 us</td><td>100.277 us</td><td>100.999 us</td><td>100.767 us</td><td>100.590 us</td><td>13.00</td><td>9,954.0</td><td>53.04</td><td>6.29</td><td>No</td><td>-</td><td>-</td><td>-</td><td>1 B</td><td>224,531</td><td>74,778</td><td>2,239</td>
+</tr><tr><td>AccessOctreeSparse</td><td>6</td><td>1000</td><td>101.784 us</td><td>0.0700 us</td><td>0.0655 us</td><td>101.757 us</td><td>101.721 us</td><td>101.951 us</td><td>101.896 us</td><td>101.858 us</td><td>15.00</td><td>9,824.7</td><td>52.74</td><td>6.48</td><td>No</td><td>-</td><td>-</td><td>-</td><td>1 B</td><td>212,943</td><td>70,902</td><td>2,086</td>
+</tr><tr><td>AccessOctreeMonotype</td><td>6</td><td>1000</td><td>15.326 us</td><td>0.0652 us</td><td>0.0610 us</td><td>15.286 us</td><td>15.264 us</td><td>15.394 us</td><td>15.393 us</td><td>15.392 us</td><td>15.00</td><td>65,250.7</td><td>7.94</td><td>1.00</td><td>No</td><td>-</td><td>-</td><td>-</td><td>-</td><td>31,945</td><td>8,053</td><td>123</td>
+</tr><tr><td>AccessOctreeDev</td><td>6</td><td>1000</td><td>101.890 us</td><td>0.1579 us</td><td>0.1477 us</td><td>101.912 us</td><td>101.682 us</td><td>102.234 us</td><td>102.101 us</td><td>102.029 us</td><td>15.00</td><td>9,814.5</td><td>52.80</td><td>6.50</td><td>No</td><td>-</td><td>-</td><td>-</td><td>1 B</td><td>220,063</td><td>73,262</td><td>2,198</td>
+</tr><tr><td>AccessOctreeDevSparse</td><td>6</td><td>1000</td><td>99.571 us</td><td>0.1659 us</td><td>0.1552 us</td><td>99.532 us</td><td>99.384 us</td><td>99.926 us</td><td>99.813 us</td><td>99.762 us</td><td>15.00</td><td>10,043.1</td><td>51.60</td><td>6.36</td><td>No</td><td>-</td><td>-</td><td>-</td><td>-</td><td>231,739</td><td>77,158</td><td>2,297</td>
+</tr><tr><td>AccessOctreeDevMonotype</td><td>6</td><td>1000</td><td>15.318 us</td><td>0.0467 us</td><td>0.0436 us</td><td>15.315 us</td><td>15.267 us</td><td>15.408 us</td><td>15.391 us</td><td>15.370 us</td><td>15.00</td><td>65,282.9</td><td>7.94</td><td>0.97</td><td>No</td><td>-</td><td>-</td><td>-</td><td>-</td><td>31,921</td><td>8,048</td><td>124</td>
+</tr><tr><td>AccessArray</td><td>6</td><td>1000</td><td>2.043 us</td><td>0.0765 us</td><td>0.2254 us</td><td>2.193 us</td><td>1.638 us</td><td>2.215 us</td><td>2.211 us</td><td>2.209 us</td><td>100.00</td><td>489,510.2</td><td>1.00</td><td>0.00</td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td><td>6,691</td><td>1,678</td><td>26</td>
+</tr></tbody></table>
+</body>
+</html>

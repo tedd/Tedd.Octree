@@ -39,6 +39,10 @@ namespace Tedd.Octree.Benchmark.Tests
         private Octree _octreeSparse;
         private Octree _octreeMonotype;
 
+        private OctreeDev _octreeDev;
+        private OctreeDev _octreeDevSparse;
+        private OctreeDev _octreeDevMonotype;
+
         private int _accessPos = 0;
         private int _levelMask;
         public UInt32 DebugSum;
@@ -84,9 +88,43 @@ namespace Tedd.Octree.Benchmark.Tests
                 Array.Fill(_dataMonotype, (UInt32)18);
 
                 _octreeMonotype = new Octree(Levels);
-                _octreeMonotype.Build(new Span<UInt32>(_dataSparse));
+                _octreeMonotype.Build(new Span<UInt32>(_dataMonotype));
 
                 if (_octreeMonotype.Data.Length > 10)
+                    throw new Exception("Monotype too big!");
+
+            }
+
+            // Dev
+
+            {
+                _data = new UInt32[chunkSize * chunkSize * chunkSize];
+                // Fill with random data
+                for (var i = 0; i < _data.Length; i++)
+                    _data[i] = (UInt32)(rnd.NextUInt32() & 0x3FFFFFFF);
+
+                _octreeDev = new OctreeDev(Levels);
+                _octreeDev.Build(new Span<UInt32>(_data));
+            }
+
+            {
+                _dataSparse = new UInt32[chunkSize * chunkSize * chunkSize];
+                // Fill with random data
+                for (var i = 0; i < _dataSparse.Length; i++)
+                    _dataSparse[i] = (UInt32)(rnd.Next(0, 2) & 0x3FFFFFFF);
+
+                _octreeDevSparse = new OctreeDev(Levels);
+                _octreeDevSparse.Build(new Span<UInt32>(_dataSparse));
+            }
+
+            {
+                _dataMonotype = new UInt32[chunkSize * chunkSize * chunkSize];
+                Array.Fill(_dataMonotype, (UInt32)18);
+
+                _octreeDevMonotype = new OctreeDev(Levels);
+                _octreeDevMonotype.Build(new Span<UInt32>(_dataMonotype));
+
+                if (_octreeDevMonotype.Data.Length > 10)
                     throw new Exception("Monotype too big!");
 
             }
@@ -158,6 +196,68 @@ namespace Tedd.Octree.Benchmark.Tests
             }
         }
 
+        [Benchmark]
+        public void AccessOctreeDev()
+        {
+            for (var ac = 0; ac < AccessTimes; ac++)
+            {
+                _accessPos++;
+                if (_accessPos >= _data.Length)
+                    _accessPos = 0;
+
+                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
+                var y = (_accessPos >> Levels) & _levelMask;
+                var z = (_accessPos) & _levelMask;
+
+                DebugSum = (UInt32)((x << (Levels + Levels))
+                                  | (y << Levels)
+                                  | (z));
+
+                DebugSum = _octreeDev.Get(x, y, z);
+            }
+        }
+
+        [Benchmark]
+        public void AccessOctreeDevSparse()
+        {
+            for (var ac = 0; ac < AccessTimes; ac++)
+            {
+                _accessPos++;
+                if (_accessPos >= _data.Length)
+                    _accessPos = 0;
+
+                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
+                var y = (_accessPos >> Levels) & _levelMask;
+                var z = (_accessPos) & _levelMask;
+
+                DebugSum = (UInt32)((x << (Levels + Levels))
+                                    | (y << Levels)
+                                    | (z));
+
+                DebugSum = _octreeDevSparse.Get(x, y, z);
+            }
+        }
+
+        [Benchmark]
+        public void AccessOctreeDevMonotype()
+        {
+            for (var ac = 0; ac < AccessTimes; ac++)
+            {
+                _accessPos++;
+                if (_accessPos >= _data.Length)
+                    _accessPos = 0;
+
+                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
+                var y = (_accessPos >> Levels) & _levelMask;
+                var z = (_accessPos) & _levelMask;
+
+                DebugSum = (UInt32)((x << (Levels + Levels))
+                                    | (y << Levels)
+                                    | (z));
+
+                DebugSum = _octreeDevMonotype.Get(x, y, z);
+            }
+        }
 
         [Benchmark(Baseline = true)]
         public void AccessArray()
