@@ -8,7 +8,7 @@ namespace Tedd.Octree.Benchmark
     {
         static void Main(string[] args)
         {
-            //var summary1 = BenchmarkRunner.Run<BuildOctrees>();
+            var summary1 = BenchmarkRunner.Run<BuildOctrees>(new TestConfig());
             var summary2 = BenchmarkRunner.Run<AccessOctrees>();
 
             //foreach (var levels in new[] { 1, 2, 3, 4, 5, 6, 7 })

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Tedd.Octree.Benchmark.Tests.BuildOctrees-20200105-104422</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet=v0.12.0, OS=Windows 10.0.18363
+AMD Ryzen 9 3950X, 1 CPU, 32 logical and 16 physical cores
+.NET Core SDK=3.1.100
+  [Host]     : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+  Job-JOEJSE : .NET Core 3.1.0 (CoreCLR 4.700.19.56402, CoreFX 4.700.19.56404), X64 RyuJIT
+</code></pre>
+<pre><code>Runtime=.NET Core 3.1  
+</code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>levels</th><th>      Mean</th><th>   Error</th><th>  StdDev</th><th>Rank</th><th>Gen 0</th><th>Gen 1</th><th>Gen 2</th><th>Allocated</th><th>Completed Work Items</th><th>Lock Contentions</th><th>Allocated native memory</th><th>Native memory leak</th>
+</tr>
+</thead><tbody><tr><td>BuildOctree</td><td>2</td><td>1,537.56 ns</td><td>26.080 ns</td><td>24.396 ns</td><td>3</td><td>0.4845</td><td>0.0057</td><td>-</td><td>4056 B</td><td>0.0000</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildArray</td><td>2</td><td>51.86 ns</td><td>0.343 ns</td><td>0.321 ns</td><td>1</td><td>0.0334</td><td>-</td><td>-</td><td>280 B</td><td>0.0000</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildOctree</td><td>3</td><td>12,225.45 ns</td><td>116.029 ns</td><td>108.533 ns</td><td>5</td><td>3.8300</td><td>0.4120</td><td>-</td><td>32136 B</td><td>0.0000</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildArray</td><td>3</td><td>357.82 ns</td><td>2.943 ns</td><td>2.753 ns</td><td>2</td><td>0.2475</td><td>0.0019</td><td>-</td><td>2072 B</td><td>0.0000</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildOctree</td><td>4</td><td>104,013.69 ns</td><td>746.858 ns</td><td>698.611 ns</td><td>7</td><td>30.6396</td><td>12.6953</td><td>-</td><td>256776 B</td><td>0.0002</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildArray</td><td>4</td><td>2,659.84 ns</td><td>24.638 ns</td><td>23.047 ns</td><td>4</td><td>1.9569</td><td>0.1144</td><td>-</td><td>16408 B</td><td>0.0000</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildOctree</td><td>5</td><td>1,184,520.66 ns</td><td>9,166.836 ns</td><td>8,574.664 ns</td><td>9</td><td>232.4219</td><td>134.7656</td><td>44.9219</td><td>2053843 B</td><td>0.0039</td><td>-</td><td>17 B</td><td>1 B</td>
+</tr><tr><td>BuildArray</td><td>5</td><td>22,633.33 ns</td><td>244.008 ns</td><td>228.245 ns</td><td>6</td><td>41.6565</td><td>41.6565</td><td>41.6565</td><td>131096 B</td><td>0.0001</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>BuildOctree</td><td>6</td><td>22,687,511.75 ns</td><td>445,474.750 ns</td><td>594,695.996 ns</td><td>10</td><td>2062.5000</td><td>1156.2500</td><td>375.0000</td><td>16430451 B</td><td>0.0625</td><td>-</td><td>2450 B</td><td>60 B</td>
+</tr><tr><td>BuildArray</td><td>6</td><td>220,218.53 ns</td><td>1,019.135 ns</td><td>795.673 ns</td><td>8</td><td>235.1074</td><td>235.1074</td><td>235.1074</td><td>1048594 B</td><td>0.0005</td><td>-</td><td>52 B</td><td>48 B</td>
+</tr></tbody></table>
+</body>
+</html>

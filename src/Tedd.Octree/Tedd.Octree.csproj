@@ -11,6 +11,8 @@
     <RepositoryUrl>https://github.com/tedd/Tedd.Octree</RepositoryUrl>
     <RepositoryType>Git</RepositoryType>
     <PackageTags>Octree</PackageTags>
+    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">

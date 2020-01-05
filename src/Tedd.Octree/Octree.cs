@@ -44,6 +44,8 @@ namespace Tedd.Octree
 
                 // Our target at this level
                 var targetNode = (int)(((ux & 1) << 2) | ((uy & 1) << 1) | (uz & 1));
+                // TODO: Moving ux>>1 from down there to up here should allow reciprocal throughput, which for and/shift is 1/3
+
                 // Skip the other nodes
                 span.MoveSize(targetNode);
 
