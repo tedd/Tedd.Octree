@@ -8,7 +8,8 @@ namespace Tedd.Octree.Benchmark
     {
         static void Main(string[] args)
         {
-            var summary = BenchmarkRunner.Run<BuildOctrees>();
+            //var summary1 = BenchmarkRunner.Run<BuildOctrees>();
+            var summary2 = BenchmarkRunner.Run<AccessOctrees>();
         }
     }
 }
