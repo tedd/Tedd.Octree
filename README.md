@@ -32,14 +32,16 @@ public class Program
 {
     public static void Main()
     {
-        // Example initialization of framework structure.
-        // Assuming 'memoryArray' is a valid pre-computed Span<UInt32> of raw structural data.
-        int depthLevels = 4;
-        Octree tree = new Octree(depthLevels);
+        int levels = 4;
+        int chunkSize = 1 << levels;
 
-        // Build is utilized here for demonstrative structure instantiation, though read-only operations are the core value proposition.
-        // tree.Build(memoryArray);
+        // Build expects uncompressed voxel data (length = chunkSize^3), indexed as:
+        // index = (x * chunkSize * chunkSize) + (y * chunkSize) + z
+        var voxels = new UInt32[chunkSize * chunkSize * chunkSize];
+        // TODO: populate voxels with your data
 
+        var tree = new Octree(levels);
+        tree.Build(voxels);
         // Extract value via spatial coordinates mapped to internal hierarchical bits
         int queryX = 1;
         int queryY = 2;
