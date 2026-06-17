@@ -16,9 +16,9 @@ The primary operational paradigm of the project is built around storing multidim
 
 ### Theoretical Models & Operational Hypotheses
 
-The internal framework architecture exhibits strategic intent towards future optimizations. Notably, in experimental implementations (`OctreeDev.cs`):
+`OctreeDev.cs` contains experimental traversal code that attempts to prefetch upcoming data during node skipping.
 
-*   **SIMD Prefetching:** There is a documented hypothesis involving programmatic SIMD cache-line prefetching utilizing `System.Runtime.Intrinsics.X86.Sse.Prefetch0` on memory references during hierarchical traversal (`span[64]`). This hypothesis implies future framework enhancements optimized for latency reduction within extreme performance scenarios. Note that this feature is strictly an architectural hypothesis and does not represent standard operation in `Octree.cs`.
+*   **SIMD Prefetching (experimental):** `OctreeDev` calls `System.Runtime.Intrinsics.X86.Sse.Prefetch0(...)` while skipping sibling entries during traversal. This behavior is not present in `Octree.cs`.
 
 ## Implementation Example: Data Retrieval
 
