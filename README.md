@@ -4,7 +4,7 @@ Compact, cache-friendly, read-only Octree implementation leveraging contiguous m
 
 ## Architectural Paradigms
 
-The fundamental epistemological interface for developers navigating the `Tedd.Octree` structural framework relies on rigorous byte-level management and hierarchical recursive descent logic.
+The `Tedd.Octree` implementation stores the tree in a single contiguous byte buffer and traverses it by decoding per-level descriptors and relative offsets.
 
 ### Structural Framework
 
