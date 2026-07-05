@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -58,7 +58,10 @@ namespace Tedd.Octree
                 // Skip the other nodes
                 for (var n = 0; n < targetNode; n++)
                 {
-                    System.Runtime.Intrinsics.X86.Sse.Prefetch0(Unsafe.AsPointer(ref span[64]));
+                    if (span.Length > 64)
+                    {
+                        System.Runtime.Intrinsics.X86.Sse.Prefetch0(Unsafe.AsPointer(ref span[64]));
+                    }
                     span.MoveSize();
                 }
 
