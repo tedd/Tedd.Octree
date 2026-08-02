@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFrameworks>netcoreapp3.1;net8.0;net9.0</TargetFrameworks>
     <Authors>Tedd Hansen</Authors>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Description>Compact cache-friendly read-only Octree. Uses cotinous memory and compact integer representations to minimize memory footprint.</Description>
@@ -13,6 +13,7 @@
     <PackageTags>Octree</PackageTags>
     <DebugType>pdbonly</DebugType>
     <DebugSymbols>true</DebugSymbols>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -24,8 +25,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Tedd.BitUtils" Version="1.0.5" />
-    <PackageReference Include="Tedd.ObjectPool" Version="1.0.1" />
+    <PackageReference Include="Tedd.BitUtils" Version="1.0.7" />
+    <PackageReference Include="Tedd.ObjectPool" Version="2.0.0" />
     <PackageReference Include="Tedd.SpanUtils" Version="1.0.8" />
   </ItemGroup>
 
@@ -33,6 +34,10 @@
     <None Include="..\..\LICENSE">
       <Pack>True</Pack>
       <PackagePath></PackagePath>
+    </None>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
 
