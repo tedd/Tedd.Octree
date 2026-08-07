@@ -14,6 +14,10 @@ The primary operational paradigm of the project is built around storing multidim
 *   **Monotype Optimization:** If all 8 immediate subnodes exhibit identical types and are uniformly monotype themselves, the structural parent collapses into a monotype node. Monotype optimization drastically reduces storage footprint by bypassing the leaf descriptor requirement and recursive descent pointers entirely. Root-level monotypes can represent uniformly distributed volumes with near-zero overhead.
 *   **Relative Jumping:** Instead of full multi-byte heap pointers, nodes reference their structural children using variable-size relative byte pointers (`RelativePos`), packing spatial jumps concisely.
 
+### Explicit Avoidance of Conventional Constructs
+
+The framework explicitly avoids conventional hierarchical data binding or routed event infrastructures. All navigation and data retrieval operations are performed strictly using bitwise operations, relative byte offsets, and extensions from `Tedd.SpanUtils` upon the contiguous `Memory<byte>` representation. This design guarantees consistent execution timing and eliminates the memory overhead associated with event delegates and data context abstractions.
+
 ### Theoretical Models & Operational Hypotheses
 
 `OctreeDev.cs` contains experimental traversal code that attempts to prefetch upcoming data during node skipping.
@@ -28,34 +32,29 @@ The `Get(int x, int y, int z)` function navigates the `Memory<byte>` segment via
 using System;
 using Tedd.Octree;
 
-public class Program
+int levels = 4;
+int chunkSize = 1 << levels;
+
+// Build expects uncompressed voxel data (length = chunkSize^3), indexed as:
+// index = (x * chunkSize * chunkSize) + (y * chunkSize) + z
+var voxels = new uint[chunkSize * chunkSize * chunkSize];
+// TODO: populate voxels with your data
+
+var tree = new Octree(levels);
+tree.Build(voxels);
+
+// Extract value via spatial coordinates mapped to internal hierarchical bits
+int queryX = 1;
+int queryY = 2;
+int queryZ = 3;
+
+try
 {
-    public static void Main()
-    {
-        int levels = 4;
-        int chunkSize = 1 << levels;
-
-        // Build expects uncompressed voxel data (length = chunkSize^3), indexed as:
-        // index = (x * chunkSize * chunkSize) + (y * chunkSize) + z
-        var voxels = new UInt32[chunkSize * chunkSize * chunkSize];
-        // TODO: populate voxels with your data
-
-        var tree = new Octree(levels);
-        tree.Build(voxels);
-        // Extract value via spatial coordinates mapped to internal hierarchical bits
-        int queryX = 1;
-        int queryY = 2;
-        int queryZ = 3;
-
-        try
-        {
-            UInt32 nodeValue = tree.Get(queryX, queryY, queryZ);
-            Console.WriteLine($"Extracted Node Data: {nodeValue}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Structural Retrieval Error: {ex.Message}");
-        }
-    }
+    uint nodeValue = tree.Get(queryX, queryY, queryZ);
+    Console.WriteLine($"Extracted Node Data: {nodeValue}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Structural Retrieval Error: {ex.Message}");
 }
 ```
