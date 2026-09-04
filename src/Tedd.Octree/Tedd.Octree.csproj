@@ -1,39 +1,35 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <Version>2.0.0</Version>
+    <PackageId>Tedd.Octree</PackageId>
     <Authors>Tedd Hansen</Authors>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Description>Compact cache-friendly read-only Octree. Uses cotinous memory and compact integer representations to minimize memory footprint.</Description>
-    <Copyright>Tedd Hansen</Copyright>
+    <Description>Allocation-free, span-backed, compact read-only octree for dense UInt32 voxel volumes.</Description>
+    <Copyright>Copyright © Tedd Hansen</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/tedd/Tedd.Octree</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tedd/Tedd.Octree</RepositoryUrl>
-    <RepositoryType>Git</RepositoryType>
-    <PackageTags>Octree</PackageTags>
-    <DebugType>pdbonly</DebugType>
-    <DebugSymbols>true</DebugSymbols>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>octree;voxel;span;zero-allocation;performance</PackageTags>
+    <PackageReleaseNotes>Version 2 introduces allocation-free caller-buffer builds, a zero-copy OctreeSpan view, full UInt32 values, deterministic versioned encoding with dense fallback, validation, dense decoding, and explicit bounds handling.</PackageReleaseNotes>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Tedd.BitUtils" Version="1.0.5" />
-    <PackageReference Include="Tedd.ObjectPool" Version="1.0.1" />
-    <PackageReference Include="Tedd.SpanUtils" Version="1.0.8" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="..\..\LICENSE">
-      <Pack>True</Pack>
-      <PackagePath></PackagePath>
-    </None>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\CHANGELOG.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
 </Project>

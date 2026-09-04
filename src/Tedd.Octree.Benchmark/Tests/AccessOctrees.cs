@@ -1,283 +1,124 @@
-﻿using System;
-using System.Diagnostics;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Diagnosers;
-using BenchmarkDotNet.Diagnostics.Windows.Configs;
-using Tedd.SpanUtils;
+using Tedd.Octree.Benchmark.Archive.V1;
+using OptimizedOctree = global::Tedd.Octree.Octree;
+using OptimizedOctreeSpan = global::Tedd.Octree.OctreeSpan;
 
-namespace Tedd.Octree.Benchmark.Tests
+namespace Tedd.Octree.Benchmark.Tests;
+
+[MemoryDiagnoser]
+public class AccessOctrees
 {
-    //[CoreJob]
+    private const int QueriesPerInvocation = 1_024;
 
-    //[MemoryDiagnoser]
-    //[TailCallDiagnoser]
-    ////[EtwProfiler]
-    //[ConcurrencyVisualizerProfiler]
-    //[NativeMemoryProfiler]
-    //[ThreadingDiagnoser]
-    //[HardwareCounters(
-    //    HardwareCounter.BranchMispredictions,
-    //    HardwareCounter.BranchInstructions)]
-    //[DisassemblyDiagnoser]
+    private uint[] _source = null!;
+    private int[] _x = null!;
+    private int[] _y = null!;
+    private int[] _z = null!;
+    private int[] _indices = null!;
+    private byte[] _spanData = null!;
+    private int _spanLength;
+    private OctreeV1 _v1 = null!;
+    private OptimizedOctree _owned = null!;
 
-    //[AllStatisticsColumn]
+    [Params(3, 5)]
+    public int Levels { get; set; }
 
-    //[RPlotExporter, RankColumn]
-    //[AsciiDocExporter]
-    //[CsvExporter]
-    //[CsvMeasurementsExporter]
-    //[HtmlExporter]
-    //[PlainExporter]
-    [Config(typeof(TestConfig))]
-    public class AccessOctrees
+    [Params(
+        DataPattern.Uniform,
+        DataPattern.Clustered,
+        DataPattern.Sparse,
+        DataPattern.Random)]
+    public DataPattern Pattern { get; set; }
+
+    [Params(QueryPattern.Sequential, QueryPattern.Random)]
+    public QueryPattern Queries { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
     {
+        _source = BenchmarkData.Create(Levels, Pattern);
+        (_x, _y, _z, _indices) = BenchmarkData.CreateQueries(Levels, Queries, QueriesPerInvocation);
 
-        private UInt32[] _data;
-        private uint[] _dataSparse;
-        private uint[] _dataMonotype;
-        private Octree _octree;
-        private Octree _octreeSparse;
-        private Octree _octreeMonotype;
+        _v1 = new OctreeV1(Levels);
+        _v1.Build(_source);
 
-        private OctreeDev _octreeDev;
-        private OctreeDev _octreeDevSparse;
-        private OctreeDev _octreeDevMonotype;
+        _owned = new OptimizedOctree(Levels);
+        _owned.Build(_source);
 
-        private int _accessPos = 0;
-        private int _levelMask;
-        public UInt32 DebugSum;
-
-        [Params( 6)]//2, 3, 4, 5,
-        public int Levels;
-
-        [Params(1_000)]
-        public int AccessTimes = 1000;
-
-        
-
-        [GlobalSetup]
-        public void Setup()
+        _spanData = new byte[OptimizedOctree.GetRequiredSize(_source, Levels)];
+        if (!OptimizedOctree.TryBuild(_source, Levels, _spanData, out _spanLength))
         {
-            _levelMask = ((~0) << (32 - Levels) >> (32 - Levels));
-
-            var rnd = new Random();
-            var chunkSize = 1 << Levels;
-
-            {
-                _data = new UInt32[chunkSize * chunkSize * chunkSize];
-                // Fill with random data
-                for (var i = 0; i < _data.Length; i++)
-                    _data[i] = (UInt32) (rnd.NextUInt32() & 0x3FFFFFFF);
-             
-                _octree = new Octree(Levels);
-                _octree.Build(new Span<UInt32>(_data));
-            }
-
-            {
-                _dataSparse = new UInt32[chunkSize * chunkSize * chunkSize];
-                // Fill with random data
-                for (var i = 0; i < _dataSparse.Length; i++)
-                    _dataSparse[i] = (UInt32) (rnd.Next(0, 2) & 0x3FFFFFFF);
-
-                _octreeSparse = new Octree(Levels);
-                _octreeSparse.Build(new Span<UInt32>(_dataSparse));
-            }
-
-            {
-                _dataMonotype = new UInt32[chunkSize * chunkSize * chunkSize];
-                Array.Fill(_dataMonotype, (UInt32)18);
-
-                _octreeMonotype = new Octree(Levels);
-                _octreeMonotype.Build(new Span<UInt32>(_dataMonotype));
-
-                if (_octreeMonotype.Data.Length > 10)
-                    throw new Exception("Monotype too big!");
-
-            }
-
-            // Dev
-
-            {
-                _data = new UInt32[chunkSize * chunkSize * chunkSize];
-                // Fill with random data
-                for (var i = 0; i < _data.Length; i++)
-                    _data[i] = (UInt32)(rnd.NextUInt32() & 0x3FFFFFFF);
-
-                _octreeDev = new OctreeDev(Levels);
-                _octreeDev.Build(new Span<UInt32>(_data));
-            }
-
-            {
-                _dataSparse = new UInt32[chunkSize * chunkSize * chunkSize];
-                // Fill with random data
-                for (var i = 0; i < _dataSparse.Length; i++)
-                    _dataSparse[i] = (UInt32)(rnd.Next(0, 2) & 0x3FFFFFFF);
-
-                _octreeDevSparse = new OctreeDev(Levels);
-                _octreeDevSparse.Build(new Span<UInt32>(_dataSparse));
-            }
-
-            {
-                _dataMonotype = new UInt32[chunkSize * chunkSize * chunkSize];
-                Array.Fill(_dataMonotype, (UInt32)18);
-
-                _octreeDevMonotype = new OctreeDev(Levels);
-                _octreeDevMonotype.Build(new Span<UInt32>(_dataMonotype));
-
-                if (_octreeDevMonotype.Data.Length > 10)
-                    throw new Exception("Monotype too big!");
-
-            }
-
+            throw new InvalidOperationException("The size returned by GetRequiredSize was insufficient.");
         }
 
+        ValidateImplementations();
+    }
 
-
-        [Benchmark]
-        public void AccessOctree()
+    [Benchmark(Baseline = true, OperationsPerInvoke = QueriesPerInvocation, Description = "V1 owned")]
+    public uint V1_Owned()
+    {
+        var checksum = 0u;
+        for (var i = 0; i < QueriesPerInvocation; i++)
         {
-            for (var ac = 0; ac < AccessTimes; ac++)
-            {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                                  | (y << Levels)
-                                  | (z));
-
-                DebugSum = _octree.Get(x, y, z);
-            }
+            checksum = unchecked(checksum + _v1.Get(_x[i], _y[i], _z[i]));
         }
 
-        [Benchmark]
-        public void AccessOctreeSparse()
+        return checksum;
+    }
+
+    [Benchmark(OperationsPerInvoke = QueriesPerInvocation, Description = "V2 owned")]
+    public uint V2_Owned()
+    {
+        var checksum = 0u;
+        for (var i = 0; i < QueriesPerInvocation; i++)
         {
-            for (var ac = 0; ac < AccessTimes; ac++)
-            {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                                    | (y << Levels)
-                                    | (z));
-
-                DebugSum = _octreeSparse.Get(x, y, z);
-            }
+            checksum = unchecked(checksum + _owned.Get(_x[i], _y[i], _z[i]));
         }
 
- [Benchmark]
-        public void AccessOctreeMonotype()
+        return checksum;
+    }
+
+    [Benchmark(OperationsPerInvoke = QueriesPerInvocation, Description = "V2 caller span")]
+    public uint V2_SpanBacked()
+    {
+        var tree = new OptimizedOctreeSpan(_spanData.AsSpan(0, _spanLength));
+        var checksum = 0u;
+        for (var i = 0; i < QueriesPerInvocation; i++)
         {
-            for (var ac = 0; ac < AccessTimes; ac++)
-            {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                                    | (y << Levels)
-                                    | (z));
-
-                DebugSum = _octreeMonotype.Get(x, y, z);
-            }
+            checksum = unchecked(checksum + tree.Get(_x[i], _y[i], _z[i]));
         }
 
-        [Benchmark]
-        public void AccessOctreeDev()
+        return checksum;
+    }
+
+    [Benchmark(OperationsPerInvoke = QueriesPerInvocation, Description = "Array read control")]
+    public uint ArrayRead_Control()
+    {
+        var checksum = 0u;
+        for (var i = 0; i < QueriesPerInvocation; i++)
         {
-            for (var ac = 0; ac < AccessTimes; ac++)
-            {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                                  | (y << Levels)
-                                  | (z));
-
-                DebugSum = _octreeDev.Get(x, y, z);
-            }
+            checksum = unchecked(checksum + _source[_indices[i]]);
         }
 
-        [Benchmark]
-        public void AccessOctreeDevSparse()
+        return checksum;
+    }
+
+    private void ValidateImplementations()
+    {
+        var spanTree = new OptimizedOctreeSpan(_spanData.AsSpan(0, _spanLength));
+        for (var i = 0; i < QueriesPerInvocation; i++)
         {
-            for (var ac = 0; ac < AccessTimes; ac++)
+            var expected = _source[_indices[i]];
+            var v1 = _v1.Get(_x[i], _y[i], _z[i]);
+            var owned = _owned.Get(_x[i], _y[i], _z[i]);
+            var spanBacked = spanTree.Get(_x[i], _y[i], _z[i]);
+
+            if (v1 != expected || owned != expected || spanBacked != expected)
             {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                                    | (y << Levels)
-                                    | (z));
-
-                DebugSum = _octreeDevSparse.Get(x, y, z);
+                throw new InvalidOperationException(
+                    $"Lookup disagreement at ({_x[i]}, {_y[i]}, {_z[i]}): " +
+                    $"array={expected}, v1={v1}, owned={owned}, span={spanBacked}.");
             }
         }
-
-        [Benchmark]
-        public void AccessOctreeDevMonotype()
-        {
-            for (var ac = 0; ac < AccessTimes; ac++)
-            {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                                    | (y << Levels)
-                                    | (z));
-
-                DebugSum = _octreeDevMonotype.Get(x, y, z);
-            }
-        }
-
-        [Benchmark(Baseline = true)]
-        public void AccessArray()
-        {
-            for (var ac = 0; ac < AccessTimes; ac++)
-            {
-                _accessPos++;
-                if (_accessPos >= _data.Length)
-                    _accessPos = 0;
-
-                var x = (_accessPos >> (Levels + Levels)) & _levelMask;
-                var y = (_accessPos >> Levels) & _levelMask;
-                var z = (_accessPos) & _levelMask;
-
-                DebugSum = (UInt32)((x << (Levels + Levels))
-                         | (y << Levels)
-                         | (z));
-                DebugSum = _data[_accessPos];
-            }
-        }
-
     }
 }
