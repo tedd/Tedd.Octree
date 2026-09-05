@@ -1,17 +1,19 @@
 # Tedd.Voxtree
 
-Tedd.Voxtree is a compact, read-only octree for `UInt32` voxel data. Version 2 stores the tree in one versioned, contiguous byte encoding and exposes two views over it:
+Tedd.Voxtree is a compact voxel storage library for read-optimized chunks,
+streamed worlds, and exact-width unmanaged values. A single channel is stored in
+one versioned, contiguous octree or dense encoding and exposed through two views:
 
 - `Octree`, a sealed owned wrapper.
 - `OctreeSpan`, a `readonly ref struct` over caller-owned encoded memory.
 
-`OctreeChunk` groups independently compressed channels. `WorldEntity` maps those
+`OctreeChunk` groups independently encoded channels. `WorldEntity` maps those
 chunks into signed 64-bit global coordinates for effectively unbounded worlds.
 `OctreeWorld` remains the bounded sparse-region representation when unloaded and
 known-air extents must be distinguished. Linear and Morton-ordered dense blocks
-can be extracted, edited, rebuilt, saved, and reloaded. See the complete
-[bulk editing and streaming guide](https://github.com/tedd/Tedd.Voxtree/blob/v2.0.0/docs/BULK_STREAMING.md)
-for examples of every added API.
+can be extracted, edited, rebuilt, saved, and reloaded. See the
+[bulk editing and streaming guide](docs/BULK_STREAMING.md) for implementation
+notes and extended examples.
 
 For successful, valid-input operations, the caller-buffer build path and `OctreeSpan` lookup path perform no managed heap allocations. The owned build path allocates one final `byte[]` for the encoded tree. Error paths may allocate exception objects. Performance beyond these steady-state allocation contracts remains a hypothesis until measured on the target runtime and hardware.
 
@@ -34,6 +36,27 @@ Or add the package reference directly:
 ```xml
 <PackageReference Include="Tedd.Voxtree" Version="2.0.0" />
 ```
+
+## Supported capabilities
+
+| Layer | Types and capabilities |
+| --- | --- |
+| Dense buffers | Linear X/Y/Z-major and Morton order; checked indexing, conversion, channel-major views, and aligned or rectangular extraction |
+| Single channel | Owned `Octree`/`Octree<T>` and zero-copy `OctreeSpan`/`OctreeSpan<T>`; owned, caller-buffer, and dense builds; validation and versioned serialization |
+| Spatial queries | Point lookup, filters, `Any`, match counts, bounded hit enumeration, rectangular decode, aligned block decode, and nearest-match search |
+| Multi-channel chunks | Immutable `OctreeChunk`/`OctreeChunk<T>` snapshots, selective channel rebuilds, full chunk packets, and borrowed channel encodings |
+| Intensive editing | `HotOctreeChunk`/`HotOctreeChunk<T>` retain channel-major dense Morton data and re-encode once on commit |
+| Bounded sparse worlds | `OctreeWorld`/`OctreeWorld<T>` distinguish unloaded, known-empty, and resident regions; support cross-chunk queries, extraction, manifests, fixed capacities, and caller-owned workspace |
+| Unbounded worlds | `WorldEntity`/`WorldEntity<T>` route signed 64-bit coordinates to power-of-two chunks with shifts and use a small LRU-assisted lookup cache before the chunk dictionary |
+| Persistence and residency | Automatic on-demand loads, clean implicit-zero chunks, dirty tracking, atomic saves, dirty flush on unload, `SaveAllChunks`, access sequencing, and a dynamic soft resident-byte target |
+| Compression | Direct chunk packets, Brotli, Deflate, GZip, ZLib, and Zstandard; the .NET 11 Zstandard codec is the default |
+| LOD | Application-generated power-of-two LOD layers with shift-based addressing, independent residency, and independent disk namespaces |
+| Locality caches | Owned and caller-backed neighborhood windows with incremental slab refresh and explicit revision/invalidation control |
+| Concurrency | Immutable chunk publication, lock-free owned-tree replacement, thread-safe bounded worlds, and amortized read/write batch scopes |
+| Generic values | Core voxel, chunk, neighborhood, query, and world APIs have exact-bit generic forms for unmanaged values whose size is 1, 2, 4, 8, or 16 bytes |
+
+The library does not generate LOD data, select an LOD, simulate moving entities,
+or infer whether unloaded data is air. Those policies remain application concerns.
 
 ## Data model
 
@@ -114,9 +137,9 @@ streamed.MaxResidentBytes = 256L * 1024 * 1024; // Dynamic soft target.
 int evicted = streamed.TrimToMemoryTarget();     // Save dirty LRU chunks, then evict.
 ```
 
-Files record their compression format, LOD level, coordinates, lengths, and CRC32, followed
-by the versioned chunk packet. The save preference therefore need not match the
-format of existing files. Supported formats are direct octree packets, Brotli,
+Files record their compression format, LOD level, coordinates, lengths, and
+CRC32, followed by the versioned chunk packet. The save preference therefore
+need not match the format of existing files. Supported formats are direct octree packets, Brotli,
 Deflate, GZip, ZLib, and Zstandard. Zstandard is the default and uses .NET 11's
 native implementation; select another format on earlier targets. ZLib is native
 on the .NET 10/11 targets but is unavailable through the .NET Standard 2.1 asset.
@@ -163,6 +186,57 @@ The generic APIs (`Octree<T>`, `OctreeSpan<T>`, chunks, neighborhoods, and world
 accept any unmanaged 1-, 2-, 4-, 8-, or 16-byte value type, including every
 `IBinaryInteger<TSelf>` implementation and exact-width custom structs. See
 [Generic voxel values](docs/GENERIC_VALUES.md) for representation and format details.
+
+## Dense linear and Morton layouts
+
+Dense operations accept the linear order above or Morton order. Conversion and
+index calculation write only to caller-provided storage:
+
+```csharp
+const int levels = 5;
+const int side = 1 << levels;
+var linear = new uint[side * side * side];
+var morton = new uint[linear.Length];
+
+linear[(1 * side + 2) * side + 3] = 42;
+DenseVoxel.Convert(linear, morton, levels,
+    DenseVoxelLayout.Linear, DenseVoxelLayout.Morton);
+
+int mortonIndex = DenseVoxel.GetIndex(1, 2, 3, levels, DenseVoxelLayout.Morton);
+uint value = morton[mortonIndex]; // 42
+
+var tree = new Octree(levels);
+tree.Build(morton, DenseVoxelLayout.Morton);
+tree.CopyTo(morton, DenseVoxelLayout.Morton);
+```
+
+`DenseVoxelBlockSpan` overlays channel-major caller storage and indexes it by
+channel and coordinates. `CopyBlockTo` decodes a cubic block in either layout;
+`CopyRegionTo` decodes an arbitrary `VoxelBox` in packed linear order.
+
+## Generic voxel values
+
+Generic forms preserve the complete bit representation without numeric
+conversion, boxing, or per-value allocation:
+
+```csharp
+const int levels = 5;
+var values = new UInt128[1 << (levels * 3)];
+values[DenseVoxel<UInt128>.GetIndex(3, 7, 11, levels,
+    DenseVoxelLayout.Linear)] = UInt128.MaxValue;
+
+var tree = new Octree<UInt128>(levels, values);
+UInt128 value = tree.Get(3, 7, 11);
+
+var encoded = new byte[Octree<UInt128>.GetMaximumSize(levels)];
+int written = Octree<UInt128>.Build(values, levels, encoded);
+var view = new OctreeSpan<UInt128>(encoded.AsSpan(0, written));
+```
+
+Enums, native integers, `Int128`/`UInt128`, and deterministic-layout unmanaged
+structs are supported when their width is exactly 1, 2, 4, 8, or 16 bytes.
+Generic encodings use format version 2 and record the element width; the original
+`UInt32` API retains its version-1 encoding.
 
 ## Owned tree
 
@@ -270,7 +344,7 @@ contiguous Morton octants without a linear scratch buffer. See
 [dense conversion details](docs/BULK_STREAMING.md#linear-and-morton-indexing) and
 the [repeatable before/after benchmarks](src/Tedd.Voxtree.Benchmark/Archive/MortonBefore/README.md).
 
-## API summary
+## Single-channel API summary
 
 | API | Purpose | Allocation behavior |
 | --- | --- | --- |
@@ -388,6 +462,35 @@ all channels in one channel-major buffer; `WithDenseChannel` rebuilds only one
 changed channel. The existing UInt32 payload also supports packed bitfields; `Masked`
 filters can select collision or material bits without unpacking every channel.
 
+```csharp
+const int levels = 5;
+const int channels = 4;
+var values = new uint[(1 << (levels * 3)) * channels];
+var dense = new DenseVoxelBlockSpan(
+    values, levels, channels, DenseVoxelLayout.Morton);
+
+dense[channel: 0, x: 1, y: 2, z: 3] = 42; // Material
+dense[channel: 1, x: 1, y: 2, z: 3] = 1;  // Collision
+
+OctreeChunk chunk = OctreeChunk.FromDense(
+    levels, channels, values, DenseVoxelLayout.Morton);
+
+// Rebuild one channel while sharing every unchanged channel encoding.
+dense.GetChannelSpan(3).Fill(12);
+chunk = chunk.WithDenseChannel(
+    channel: 3, dense.GetChannelSpan(3), DenseVoxelLayout.Morton);
+
+// Retain dense Morton storage during intensive edits, then encode once.
+HotOctreeChunk hot = chunk.MarkHot();
+hot[channel: 0, x: 1, y: 2, z: 3] = 43;
+OctreeChunk snapshot = hot.UnmarkHot();
+
+// Serialize or transport all channels as one checked packet.
+var packet = new byte[snapshot.SerializedLength];
+snapshot.CopyEncodedTo(packet);
+OctreeChunk restored = OctreeChunk.FromEncoded(packet);
+```
+
 | Data | Suggested initial layout |
 | --- | --- |
 | Block/material ID | Independent channel |
@@ -411,6 +514,76 @@ octree; the world-specific commit methods also publish it. Do not
 rebuild voxel octrees for entity movement: keep entity IDs, positions, velocity,
 and bounds in a separate mutable index and query voxel collision channels for
 terrain interaction.
+
+## Bounded sparse worlds
+
+`OctreeWorld` provides a finite coordinate space without allocating a dense
+world or a complete chunk-reference grid. Unloaded data remains unknown; known
+zero regions and resident chunks collapse independently in its outer octree:
+
+```csharp
+using var world = new OctreeWorld(
+    levels: 10, chunkLevels: 5, channelCount: 4,
+    chunkCapacity: 256, branchCapacity: 2048);
+
+// Generation or storage established that this adjacent chunk-sized region is air.
+if (!world.TrySetEmptyRegion(x: 32, y: 0, z: 0, levels: 5))
+    throw new InvalidOperationException("Increase branch capacity.");
+
+// LoadChunk uses chunk coordinates; point and query APIs use voxel coordinates.
+world.LoadChunk(0, 0, 0, OctreeChunk.Empty(levels: 5, channelCount: 4));
+uint material = world.Get(channel: 0, x: 1, y: 2, z: 3);
+
+var box = new VoxelBox(0, 0, 0, 64, 32, 32);
+if (!world.TryAny(box, channel: 1, VoxelFilter.NonZero, out bool occupied))
+{
+    // The region contains unloaded data, so a negative answer is inconclusive.
+}
+
+// This block crosses from the resident chunk into the known-empty region.
+var allChannels = new uint[(1 << (5 * 3)) * world.ChannelCount];
+world.CopyBlockTo(16, 0, 0, levels: 5, allChannels, DenseVoxelLayout.Morton);
+```
+
+`GetRegion` reports `Unloaded`, `Empty`, or `Loaded`. `QueryRegions`
+exports a caller-buffer manifest, and `TryLoadRegion` imports or translates it:
+
+```csharp
+var bounds = new VoxelBox(0, 0, 0, 128, 128, 128);
+var manifest = new OctreeWorldRegion[1 + 7 * world.BranchCount];
+if (!world.QueryRegions(bounds, manifest, out int regionCount))
+    throw new InvalidOperationException("Manifest capacity is insufficient.");
+
+using var destination = new OctreeWorld(
+    levels: 16, chunkLevels: 5, channelCount: 4,
+    chunkCapacity: 256, branchCapacity: 4096);
+
+foreach (var region in manifest.AsSpan(0, regionCount))
+{
+    if (!destination.TryLoadRegion(region, offsetX: 2048))
+        throw new InvalidOperationException("Destination capacity is insufficient.");
+}
+```
+
+Capacity can be provisioned internally or supplied as exclusive caller-owned
+memory. After construction, normal operations allocate no managed memory apart
+from synchronization warmup and contention paths:
+
+```csharp
+const int branches = 2048;
+const int chunkSlots = 256;
+var workspace = new int[
+    OctreeWorld.GetRequiredWorkspaceLength(branches, chunkSlots)];
+var chunks = new OctreeChunk?[chunkSlots];
+
+using var world = new OctreeWorld(
+    levels: 10, chunkLevels: 5, channelCount: 4,
+    workspace, chunks, branchCapacity: branches);
+```
+
+Use `initiallyEmpty: true` only when the complete world is known to contain
+zeros in every channel. It is an assertion about data, not an unloaded-data
+policy. The generic `OctreeWorld<T>` mirrors this API.
 
 ## Validation and errors
 
@@ -437,7 +610,10 @@ Source values and encoded build destinations must not overlap. Encoded input and
 - The encoding carries a format version. Package version `2.0.0` and byte-format `Octree.FormatVersion == 1` are distinct version domains.
 - Consumers must treat `Data` and external backing storage as immutable while a tree is being read. Mutating encoded bytes invalidates the view and can corrupt subsequent lookups.
 
-Version 2 encodings are not compatible with version 1. Validate persisted data before use and rebuild old data from its dense source.
+The package 2.0 encoding contract is not compatible with the archived package
+1.x encoding. Generic format 2 and the current non-generic `UInt32` format 1
+are also intentionally distinct. Validate persisted data before use and rebuild
+incompatible data from its dense source.
 
 ## Concurrency
 
