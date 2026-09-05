@@ -15,6 +15,9 @@ All notable changes to Tedd.Voxtree are documented here.
 
 ### Added
 
+- Effectively unbounded `WorldEntity`/`WorldEntity<T>` coordinate layers backed by
+  chunk dictionaries, signed 64-bit coordinates, bit-shift routing for mandatory
+  power-of-two chunk sides, and hash-indexed ten-entry recent-chunk caches.
 - Exact-width generic voxel APIs for arbitrary `IBinaryInteger<TSelf>` values and
   unmanaged custom structs of 1, 2, 4, 8, or 16 bytes, including chunks,
   neighborhoods, spatial queries, dense layouts, and sparse worlds.

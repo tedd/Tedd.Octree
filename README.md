@@ -5,11 +5,11 @@ Tedd.Voxtree is a compact, read-only octree for `UInt32` voxel data. Version 2 s
 - `Octree`, a sealed owned wrapper.
 - `OctreeSpan`, a `readonly ref struct` over caller-owned encoded memory.
 
-`OctreeChunk` groups independently compressed channels. `OctreeWorld` supplies a
-sparse, mutable outer hierarchy for streaming chunks into worlds larger than a
-single dense buffer, preserving the distinction between unloaded data and known
-air. Linear and Morton-ordered dense blocks can be extracted, edited, rebuilt,
-saved, and reloaded. See the complete
+`OctreeChunk` groups independently compressed channels. `WorldEntity` maps those
+chunks into signed 64-bit global coordinates for effectively unbounded worlds.
+`OctreeWorld` remains the bounded sparse-region representation when unloaded and
+known-air extents must be distinguished. Linear and Morton-ordered dense blocks
+can be extracted, edited, rebuilt, saved, and reloaded. See the complete
 [bulk editing and streaming guide](https://github.com/tedd/Tedd.Voxtree/blob/v2.0.0/docs/BULK_STREAMING.md)
 for examples of every added API.
 
@@ -45,7 +45,8 @@ count = side * side * side
 ```
 
 Level `0` represents one voxel. Level `9` represents a `512 x 512 x 512` volume.
-These are **single encoded chunk/channel** limits. Outer worlds support depths
+Consequently every chunk side is a power of two. These are **single encoded
+chunk/channel** limits. Outer worlds support depths
 through 20, with Int64 logical voxel counts and independently configurable chunk
 depth. For example:
 
@@ -55,6 +56,27 @@ var world = new OctreeWorld(levels: 10, chunkLevels: 5, channelCount: 4,
 // A 1024-cubed world containing independently loadable 32-cubed chunks.
 // No dense 1024-cubed buffer is allocated; the initial state is unloaded.
 ```
+
+For an unbounded signed coordinate system, configure `WorldEntity` with the
+power-of-two side length directly. A side of 32 produces `ChunkShift == 5`;
+global coordinates are routed with `>> 5`, including negative coordinates:
+
+```csharp
+var world = new WorldEntity(chunkSize: 32, channelCount: 4);
+var chunk = OctreeChunk.Empty(levels: 5, channelCount: 4);
+world.SetChunk(chunkX: -1, chunkY: 0, chunkZ: 2, chunk);
+
+uint material = world.Get(channel: 0, x: -1, y: 7, z: 64);
+// Global (-1, 7, 64) resolves to chunk (-1, 0, 2), local (31, 7, 0).
+```
+
+`WorldEntity.Chunks` is a read-only view of its chunk dictionary. Point and
+chunk reads first consult a hash-indexed cache of the ten most recently used
+chunks. This improves highly local reads; cold misses still fall back to the
+dictionary and cost more than a direct dictionary miss. `SetChunk`,
+`TryGetChunk`, `RemoveChunk`, and `Chunks` use chunk coordinates; `Get`,
+`TryGet`, and `ResolveCoordinates` use global voxel coordinates.
+`WorldEntity` is not thread-safe.
 
 The dense source must contain exactly `count` values in this order:
 

@@ -77,6 +77,10 @@ public class DocumentationExamplesTests
             }
             var borrowed = new OctreeChunk(levels, encodings);
 
+            var globalWorld = new WorldEntity(chunkSize: 32, channelCount: channels);
+            globalWorld.SetChunk(chunkX: -1, chunkY: 0, chunkZ: 2, chunk);
+            uint globalMaterial = globalWorld.Get(channel: 0, x: -31, y: 2, z: 67);
+
             var world = new OctreeWorld(
                 levels: 10, chunkLevels: 5, channelCount: 4,
                 chunkCapacity: 256, branchCapacity: 2048);
@@ -168,6 +172,7 @@ public class DocumentationExamplesTests
             Assert.True(empty);
             Assert.True(built);
             Assert.Equal(42u, value);
+            Assert.Equal(42u, globalMaterial);
         }
         finally { File.Delete(packetPath); }
     }
