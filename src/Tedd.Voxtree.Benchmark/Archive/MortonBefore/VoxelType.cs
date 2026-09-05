@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>Validates and dispatches supported voxel value representations.</summary>
 internal static class VoxelType<T> where T : unmanaged
@@ -191,15 +191,14 @@ internal static class VoxelCodec<T> where T : unmanaged
         }
     }
 
-    internal static bool TryCopyTo(ReadOnlySpan<byte> data, int levels, StorageKind storageKind, Span<T> destination,
-        DenseVoxelLayout layout = DenseVoxelLayout.Linear) =>
+    internal static bool TryCopyTo(ReadOnlySpan<byte> data, int levels, StorageKind storageKind, Span<T> destination) =>
         Unsafe.SizeOf<T>() switch
         {
-            1 => GenericOctreeCodec<byte>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, byte>(destination), layout),
-            2 => GenericOctreeCodec<ushort>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, ushort>(destination), layout),
-            4 => GenericOctreeCodec<uint>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, uint>(destination), layout),
-            8 => GenericOctreeCodec<ulong>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, ulong>(destination), layout),
-            16 => GenericOctreeCodec<VoxelUInt128>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, VoxelUInt128>(destination), layout),
+            1 => GenericOctreeCodec<byte>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, byte>(destination)),
+            2 => GenericOctreeCodec<ushort>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, ushort>(destination)),
+            4 => GenericOctreeCodec<uint>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, uint>(destination)),
+            8 => GenericOctreeCodec<ulong>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, ulong>(destination)),
+            16 => GenericOctreeCodec<VoxelUInt128>.TryCopyTo(data, levels, storageKind, MemoryMarshal.Cast<T, VoxelUInt128>(destination)),
             _ => ThrowUnsupported<bool>()
         };
 

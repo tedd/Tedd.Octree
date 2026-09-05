@@ -35,6 +35,21 @@ that exact-width type. Span builds and copies use `MemoryMarshal.Cast`; point re
 use `Unsafe.As`. These are reinterpretations, not numeric conversions or copies.
 The JIT specializes value-type generic instantiations and folds the width dispatch.
 
+All supported widths use native Morton reconstruction with reused uniform prefixes,
+direct contiguous Morton decoding, and the shared axis-based layout permutation.
+These paths preserve every voxel bit and require no linear scratch buffer:
+
+```csharp
+var morton = new UInt128[tree.Count];
+tree.CopyTo(morton, DenseVoxelLayout.Morton);
+tree.Build(morton, DenseVoxelLayout.Morton);
+tree.AsSpan().TryCopyTo(morton, DenseVoxelLayout.Morton);
+```
+
+Aligned Morton block extraction uses the same contiguous decoder. Generic dense
+fallback remains linear little-endian storage, so that case requires permutation
+when the requested input or output layout is Morton.
+
 The complete bit representation participates in equality, zero detection, masking,
 and serialization. Custom structs should therefore use deterministic layout and
 must not contain semantically irrelevant or uninitialized padding. Use explicit or

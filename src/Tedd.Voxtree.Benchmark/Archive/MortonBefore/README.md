@@ -1,10 +1,16 @@
 # Morton conversion baseline
 
-This directory freezes the conversion implementation from commit
-`377c360` (2026-09-05), immediately before the Morton conversion optimization.
-The ten C# files are copied from `src/Tedd.Voxtree` with only their namespace
-changed to `Tedd.Voxtree.Benchmark.Archive.MortonBefore`. Supporting query and
-value types are included to keep the baseline independent of later changes.
+This directory freezes two conversion baselines from 2026-09-05:
+
+- The ten original UInt32 and supporting files are from `377c360`, before the
+  Morton conversion optimization.
+- The nine generic files (`*Generic*.cs`, `VoxelType.cs`, `StorageInteger.cs`)
+  are from `4575be5`, immediately after generic support was introduced and before
+  applying the Morton optimization to that codec.
+
+The C# files are copied from `src/Tedd.Voxtree` with only their namespace changed
+to `Tedd.Voxtree.Benchmark.Archive.MortonBefore`. Supporting query and value types
+are included to keep the baselines independent of later changes.
 Do not update this archive when optimizing the production implementation.
 
 `Tests/MortonConversions.cs` benchmarks both implementations in the same run.
@@ -20,6 +26,11 @@ dense round trips. The cases cover 32-cubed and 128-cubed channels containing:
 Both Morton and linear builds are measured to detect effects on the existing
 linear path. `MortonLayouts` separately measures both permutation directions.
 Input/output provisioning and setup validation are outside timed operations.
+
+`GenericMortonConversions<T>` and `GenericMortonLayouts<T>` additionally compare
+the archived and current generic APIs for `byte`, `ulong`, and `UInt128` on
+32-cubed channels. Regression tests cover all five supported widths, including
+opaque custom structs, on every supported target.
 
 From the benchmark project directory, run:
 

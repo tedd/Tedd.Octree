@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>Owns a compact, immutable encoding of a cubic voxel volume of unmanaged <typeparamref name="T"/> values.</summary>
 /// <remarks>
@@ -86,22 +86,15 @@ public sealed partial class Octree<T> where T : unmanaged
         (uint)x < (uint)SideLength && (uint)y < (uint)SideLength && (uint)z < (uint)SideLength;
 
     /// <summary>Expands the encoded volume into the beginning of <paramref name="destination"/>.</summary>
-    public void CopyTo(Span<T> destination) => CopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Expands the encoded volume directly into the requested dense layout.</summary>
-    public void CopyTo(Span<T> destination, DenseVoxelLayout layout) => AsSpan().CopyTo(destination, layout);
+    public void CopyTo(Span<T> destination) => AsSpan().CopyTo(destination);
 
     /// <summary>Attempts to expand the encoded volume into caller-provided storage.</summary>
-    public bool TryCopyTo(Span<T> destination) => TryCopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Attempts to expand the encoded volume directly into the requested dense layout.</summary>
-    public bool TryCopyTo(Span<T> destination, DenseVoxelLayout layout)
+    public bool TryCopyTo(Span<T> destination)
     {
-        DenseVoxel.Validate(layout);
         var encoded = Volatile.Read(ref _data);
         return encoded.Length != 0 &&
                OctreeSpan<T>.CreateTrusted(encoded, _levels, VoxelCodec<T>.GetStorageKindUnchecked(encoded))
-                   .TryCopyTo(destination, layout);
+                   .TryCopyTo(destination);
     }
 
     /// <summary>Captures an allocation-free snapshot that remains valid across subsequent builds.</summary>
@@ -236,30 +229,21 @@ public readonly ref partial struct OctreeSpan<T> where T : unmanaged
         (uint)x < (uint)SideLength && (uint)y < (uint)SideLength && (uint)z < (uint)SideLength;
 
     /// <summary>Expands the encoded volume into the beginning of <paramref name="destination"/>.</summary>
-    public void CopyTo(Span<T> destination) => CopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Validates and expands the complete volume directly into the requested dense layout.</summary>
-    public void CopyTo(Span<T> destination, DenseVoxelLayout layout)
+    public void CopyTo(Span<T> destination)
     {
-        DenseVoxel.Validate(layout);
         if (!IsValid) throw new InvalidOperationException("The octree view is not initialized.");
         if (destination.Length < Count)
             throw new ArgumentException($"Destination must contain at least {Count} elements.", nameof(destination));
         if (MemoryMarshal.AsBytes(destination[..Count]).Overlaps(_data))
             throw new ArgumentException("Destination must not overlap the encoded octree.", nameof(destination));
-        if (!VoxelCodec<T>.TryCopyTo(_data, _levels, _storageKind, destination, layout))
+        if (!VoxelCodec<T>.TryCopyTo(_data, _levels, _storageKind, destination))
             throw new FormatException("The octree data is malformed.");
     }
 
     /// <summary>Attempts to expand the encoded volume into caller-provided storage.</summary>
-    public bool TryCopyTo(Span<T> destination) => TryCopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Attempts validated expansion into the requested layout; failure leaves the destination unchanged.</summary>
-    public bool TryCopyTo(Span<T> destination, DenseVoxelLayout layout)
-    {
-        DenseVoxel.Validate(layout);
-        return IsValid && VoxelCodec<T>.TryCopyTo(_data, _levels, _storageKind, destination, layout);
-    }
+    public bool TryCopyTo(Span<T> destination) => IsValid && destination.Length >= Count &&
+        !MemoryMarshal.AsBytes(destination[..Count]).Overlaps(_data) &&
+        VoxelCodec<T>.TryCopyTo(_data, _levels, _storageKind, destination);
 
     /// <summary>Performs allocation-free structural and primitive-encoding validation.</summary>
     public bool IsWellFormed() => IsValid && VoxelCodec<T>.IsWellFormed(_data, _levels, _storageKind);

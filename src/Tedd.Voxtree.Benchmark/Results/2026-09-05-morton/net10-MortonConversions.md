@@ -1,0 +1,86 @@
+```
+
+BenchmarkDotNet v0.16.0-preview.1, Windows 11 (10.0.26200.9168/25H2/2025Update/HudsonValley2)
+AMD Ryzen 9 5950X 3.40GHz, 1 CPU, 32 logical and 16 physical cores
+Memory: 56.67 GB Total, 29.31 GB Available
+.NET SDK 11.0.100-preview.7.26381.103
+  [Host]     : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  Job-ZNVNAZ : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+
+IterationCount=5  IterationTime=100ms  LaunchCount=1  
+WarmupCount=3  
+
+```
+| Method            | Categories  | Levels | Pattern   | Mean          | Error          | StdDev        | Ratio | RatioSD | Allocated | Alloc Ratio |
+|------------------ |------------ |------- |---------- |--------------:|---------------:|--------------:|------:|--------:|----------:|------------:|
+| **BuildBefore**       | **Build**       | **5**      | **Uniform**   |      **1.334 μs** |      **0.0794 μs** |     **0.0206 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 5      | Uniform   |      1.358 μs |      0.0995 μs |     0.0258 μs |  1.02 |    0.02 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **5**      | **LastVoxel** |      **3.807 μs** |      **0.0582 μs** |     **0.0090 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 5      | LastVoxel |      1.517 μs |      0.1032 μs |     0.0268 μs |  0.40 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **5**      | **Runs**      |     **21.453 μs** |      **0.8571 μs** |     **0.2226 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 5      | Runs      |      6.667 μs |      2.1209 μs |     0.3282 μs |  0.31 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **5**      | **Dense**     |    **513.266 μs** |     **68.8992 μs** |    **17.8929 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 5      | Dense     |    300.485 μs |      3.5081 μs |     0.5429 μs |  0.59 |    0.02 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **7**      | **Uniform**   |     **95.964 μs** |      **6.4457 μs** |     **0.9975 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 7      | Uniform   |     99.872 μs |     17.4238 μs |     4.5249 μs |  1.04 |    0.04 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **7**      | **LastVoxel** |    **218.500 μs** |     **28.1020 μs** |     **7.2980 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 7      | LastVoxel |     98.234 μs |     16.3868 μs |     2.5359 μs |  0.45 |    0.02 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **7**      | **Runs**      |  **1,415.589 μs** |     **52.1340 μs** |    **13.5390 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 7      | Runs      |    469.881 μs |     53.4723 μs |    13.8866 μs |  0.33 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **BuildBefore**       | **Build**       | **7**      | **Dense**     | **41,900.300 μs** | **21,364.3958 μs** | **5,548.2657 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| BuildMorton       | Build       | 7      | Dense     | 27,721.816 μs |  7,361.4905 μs | 1,911.7557 μs |  0.67 |    0.10 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **5**      | **Uniform**   |      **1.174 μs** |      **0.0455 μs** |     **0.0118 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 5      | Uniform   |      1.185 μs |      0.0669 μs |     0.0104 μs |  1.01 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **5**      | **LastVoxel** |      **1.670 μs** |      **0.0447 μs** |     **0.0116 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 5      | LastVoxel |      1.351 μs |      0.0406 μs |     0.0105 μs |  0.81 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **5**      | **Runs**      |     **11.321 μs** |      **0.4023 μs** |     **0.1045 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 5      | Runs      |      4.432 μs |      0.0654 μs |     0.0170 μs |  0.39 |    0.00 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **5**      | **Dense**     |     **47.204 μs** |      **1.4090 μs** |     **0.3659 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 5      | Dense     |     20.966 μs |      0.8197 μs |     0.2129 μs |  0.44 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **7**      | **Uniform**   |     **82.724 μs** |      **4.7578 μs** |     **0.7363 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 7      | Uniform   |     83.619 μs |      5.4110 μs |     0.8374 μs |  1.01 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **7**      | **LastVoxel** |    **133.548 μs** |     **36.6810 μs** |     **5.6764 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 7      | LastVoxel |     83.736 μs |      3.1298 μs |     0.8128 μs |  0.63 |    0.03 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **7**      | **Runs**      |    **823.006 μs** |     **56.3640 μs** |    **14.6376 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 7      | Runs      |    308.103 μs |     12.5158 μs |     1.9368 μs |  0.37 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **ExtractBefore**     | **Extract**     | **7**      | **Dense**     |  **3,602.845 μs** |     **85.4172 μs** |    **13.2184 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| ExtractMorton     | Extract     | 7      | Dense     |  1,606.349 μs |    949.9795 μs |   246.7067 μs |  0.45 |    0.06 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **5**      | **Uniform**   |      **1.325 μs** |      **0.0390 μs** |     **0.0101 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 5      | Uniform   |      1.338 μs |      0.0764 μs |     0.0198 μs |  1.01 |    0.02 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **5**      | **LastVoxel** |      **9.509 μs** |      **0.2140 μs** |     **0.0556 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 5      | LastVoxel |      8.638 μs |      0.3549 μs |     0.0922 μs |  0.91 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **5**      | **Runs**      |     **31.510 μs** |      **0.3572 μs** |     **0.0928 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 5      | Runs      |     31.156 μs |      0.5806 μs |     0.1508 μs |  0.99 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **5**      | **Dense**     |    **437.826 μs** |      **8.9855 μs** |     **2.3335 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 5      | Dense     |    447.448 μs |     10.6809 μs |     2.7738 μs |  1.02 |    0.01 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **7**      | **Uniform**   |    **111.370 μs** |     **25.4908 μs** |     **3.9447 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 7      | Uniform   |     93.958 μs |      4.2739 μs |     0.6614 μs |  0.84 |    0.03 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **7**      | **LastVoxel** |    **330.290 μs** |     **77.8350 μs** |    **20.2135 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 7      | LastVoxel |    367.424 μs |     89.0372 μs |    23.1227 μs |  1.12 |    0.09 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **7**      | **Runs**      |  **2,239.973 μs** |     **83.5176 μs** |    **21.6893 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 7      | Runs      |  2,316.429 μs |    549.1871 μs |   142.6221 μs |  1.03 |    0.06 |         - |          NA |
+|                   |             |        |           |               |                |               |       |         |           |             |
+| **LinearBuildBefore** | **LinearBuild** | **7**      | **Dense**     | **29,634.290 μs** |    **868.7347 μs** |   **225.6076 μs** |  **1.00** |    **0.00** |         **-** |          **NA** |
+| LinearBuild       | LinearBuild | 7      | Dense     | 28,654.820 μs |  1,886.2943 μs |   489.8646 μs |  0.97 |    0.02 |         - |          NA |

@@ -83,6 +83,13 @@ public static class DenseVoxel
         destination = destination[..count];
         if (sourceLayout == destinationLayout) { source.CopyTo(destination); return; }
         if (source.Overlaps(destination)) throw new ArgumentException("Layout conversion buffers must not overlap.");
+        ConvertLayout(source, destination, levels, sourceLayout);
+    }
+
+    // Both spans are validated, disjoint, and have different layouts.
+    internal static void ConvertLayout<T>(ReadOnlySpan<T> source, Span<T> destination, int levels,
+        DenseVoxelLayout sourceLayout) where T : unmanaged
+    {
         var side = 1 << levels;
         // Interleave each coordinate once, rather than encoding all three axes per voxel.
         // At MaxLevels this uses only 2 KiB of stack space.

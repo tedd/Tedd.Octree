@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>
 /// Version-2 codec over one exact-width primitive storage type. Public voxel structs
@@ -65,7 +65,7 @@ internal static class GenericOctreeCodec<TStorage>
         var denseLength = GetDenseSize(source.Length);
         var writer = new OctreeWriter(Span<byte>.Empty, measureOnly: true, denseLength);
 
-        if (!BuildRoot(source, levels, layout, ref writer, out var root))
+        if (!BuildSubtree(source, levels, 0, 1 << levels, 1 << (levels * 2), ref writer, out var root, layout))
             return BuildPlan.Dense(denseLength);
 
         if (root.IsUniform)
@@ -106,7 +106,8 @@ internal static class GenericOctreeCodec<TStorage>
 
         var denseLength = GetDenseSize(source.Length);
         var writer = new OctreeWriter(destination[..Math.Min(destination.Length, denseLength)], measureOnly: false);
-        var treeCompleted = BuildRoot(source, levels, layout, ref writer, out var root);
+        var treeCompleted = BuildSubtree(source, levels, 0, 1 << levels, 1 << (levels * 2),
+            ref writer, out var root, layout);
 
         if (treeCompleted && root.IsUniform)
         {
@@ -248,9 +249,8 @@ internal static class GenericOctreeCodec<TStorage>
     }
 
     internal static bool TryCopyTo(ReadOnlySpan<byte> data, int levels, StorageKind storageKind,
-        Span<TStorage> destination, DenseVoxelLayout layout = DenseVoxelLayout.Linear)
+        Span<TStorage> destination)
     {
-        DenseVoxel.Validate(layout);
         var count = OctreeCodec.GetVoxelCount(levels);
         if (destination.Length < count || MemoryMarshal.AsBytes(destination[..count]).Overlaps(data) ||
             !IsWellFormed(data, levels, storageKind))
@@ -266,12 +266,10 @@ internal static class GenericOctreeCodec<TStorage>
         }
         if (storageKind == StorageKind.Dense)
         {
-            ReadDense(data[HeaderSize..], destination, levels, layout);
+            ReadDense(data[HeaderSize..], destination);
             return true;
         }
         var body = data[..^1];
-        if (layout == DenseVoxelLayout.Morton)
-            return TryDecodeMortonNode(body, body.Length - data[^1], levels, destination);
         return TryDecodeNode(body, body.Length - data[^1], levels, 1 << levels, 0, 0, 0, destination);
     }
 
@@ -335,11 +333,6 @@ internal static class GenericOctreeCodec<TStorage>
     {
         if (layout == DenseVoxelLayout.Morton)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                DenseVoxel.ConvertLayout(source, MemoryMarshal.Cast<byte, TStorage>(destination), levels, layout);
-                return;
-            }
             var side = 1 << levels;
             for (var x = 0; x < side; x++)
             for (var y = 0; y < side; y++)
@@ -357,25 +350,11 @@ internal static class GenericOctreeCodec<TStorage>
             WriteLittleEndian(destination.Slice(index * ValueSize, ValueSize), source[index]);
     }
 
-    internal static void ReadDense(ReadOnlySpan<byte> source, Span<TStorage> destination,
-        int levels, DenseVoxelLayout layout)
+    private static void ReadDense(ReadOnlySpan<byte> source, Span<TStorage> destination)
     {
         if (BitConverter.IsLittleEndian)
         {
-            var values = MemoryMarshal.Cast<byte, TStorage>(source);
-            if (layout == DenseVoxelLayout.Linear) values.CopyTo(destination);
-            else DenseVoxel.ConvertLayout(values, destination, levels, DenseVoxelLayout.Linear);
-            return;
-        }
-        if (layout == DenseVoxelLayout.Morton)
-        {
-            var side = 1 << levels;
-            var index = 0;
-            for (var x = 0; x < side; x++)
-            for (var y = 0; y < side; y++)
-            for (var z = 0; z < side; z++)
-                destination[DenseVoxel.Index(x, y, z, side, layout)] =
-                    ReadLittleEndian(source.Slice(index++ * ValueSize, ValueSize));
+            MemoryMarshal.Cast<byte, TStorage>(source).CopyTo(destination);
             return;
         }
         for (var index = 0; index < destination.Length; index++)
@@ -411,13 +390,9 @@ internal static class GenericOctreeCodec<TStorage>
         }
     }
 
-    private static bool BuildRoot(ReadOnlySpan<TStorage> source, int levels, DenseVoxelLayout layout,
-        ref OctreeWriter writer, out SubtreeResult result) => layout == DenseVoxelLayout.Morton
-        ? BuildMortonSubtree(source, levels, -1, ref writer, out result)
-        : BuildLinearSubtree(source, levels, 0, 1 << levels, 1 << (levels * 2), ref writer, out result);
-
-    private static bool BuildLinearSubtree(ReadOnlySpan<TStorage> source, int level, int baseIndex,
-        int rowStride, int planeStride, ref OctreeWriter writer, out SubtreeResult result)
+    private static bool BuildSubtree(ReadOnlySpan<TStorage> source, int level, int baseIndex,
+        int rowStride, int planeStride, ref OctreeWriter writer, out SubtreeResult result,
+        DenseVoxelLayout layout)
     {
         if (level == 0)
         {
@@ -425,7 +400,9 @@ internal static class GenericOctreeCodec<TStorage>
             return true;
         }
 
-        if (level >= 2 && IsUniformRegion(source, baseIndex, 1 << level, rowStride, planeStride))
+        if (level >= 2 && (layout == DenseVoxelLayout.Morton
+            ? IsUniform(source.Slice(baseIndex, 1 << (level * 3)))
+            : IsUniformRegion(source, baseIndex, 1 << level, rowStride, planeStride)))
         {
             result = SubtreeResult.Uniform(source[baseIndex]);
             return true;
@@ -439,10 +416,12 @@ internal static class GenericOctreeCodec<TStorage>
 
         for (var child = 0; child < 8; child++)
         {
-            var childBase = baseIndex + (((child >> 2) & 1) * half * planeStride) +
+            var childBase = layout == DenseVoxelLayout.Morton
+                ? baseIndex + (((child >> 2) | (child & 2) | ((child & 1) << 2)) * half * half * half)
+                : baseIndex + (((child >> 2) & 1) * half * planeStride) +
                   (((child >> 1) & 1) * half * rowStride) + ((child & 1) * half);
-            if (!BuildLinearSubtree(source, level - 1, childBase, rowStride, planeStride,
-                    ref writer, out children[child]))
+            if (!BuildSubtree(source, level - 1, childBase, rowStride, planeStride,
+                    ref writer, out children[child], layout))
             {
                 result = default;
                 return false;
@@ -458,53 +437,6 @@ internal static class GenericOctreeCodec<TStorage>
             return true;
         }
 
-        return WriteNode(children, ref writer, out result);
-    }
-
-    private static bool BuildMortonSubtree(ReadOnlySpan<TStorage> source, int level, int uniformPrefix,
-        ref OctreeWriter writer, out SubtreeResult result)
-    {
-        var value = source[0];
-        if (uniformPrefix < 0)
-        {
-#if NET10_0_OR_GREATER
-            uniformPrefix = source.IndexOfAnyExcept(value);
-            if (uniformPrefix < 0) uniformPrefix = source.Length;
-#else
-            uniformPrefix = 1;
-            while (uniformPrefix < source.Length && source[uniformPrefix].Equals(value)) uniformPrefix++;
-#endif
-        }
-        if (uniformPrefix == source.Length)
-        {
-            result = SubtreeResult.Uniform(value);
-            return true;
-        }
-
-        Span<SubtreeResult> children = stackalloc SubtreeResult[8];
-        var childCount = source.Length >> 3;
-        for (var child = 0; child < 8; child++)
-        {
-            var start = OctreeCodec.MortonChild(child) * childCount;
-            if (start + childCount <= uniformPrefix)
-                children[child] = SubtreeResult.Uniform(value);
-            else if (level == 1)
-                children[child] = SubtreeResult.Uniform(source[start]);
-            // Preserve the known first run and its mismatch instead of rescanning it at each depth.
-            else if (!BuildMortonSubtree(source.Slice(start, childCount), level - 1,
-                         start < uniformPrefix ? uniformPrefix - start : -1, ref writer, out children[child]))
-            {
-                result = default;
-                return false;
-            }
-        }
-        return WriteNode(children, ref writer, out result);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool WriteNode(scoped ReadOnlySpan<SubtreeResult> children,
-        ref OctreeWriter writer, out SubtreeResult result)
-    {
         byte uniformMask = 0;
         for (var child = 0; child < 8; child++)
             if (children[child].IsUniform) uniformMask |= (byte)(1 << child);
@@ -630,39 +562,6 @@ internal static class GenericOctreeCodec<TStorage>
             }
             if (level == 1 || !TryDecodeNode(body, nodeOffset - (int)distances[child], level - 1,
                     sideLength, childX, childY, childZ, destination)) return false;
-        }
-        return true;
-    }
-
-    internal static bool TryDecodeMortonNode(ReadOnlySpan<byte> body, int nodeOffset, int level,
-        Span<TStorage> destination)
-    {
-        if (level <= 0 || nodeOffset < HeaderSize || nodeOffset >= body.Length) return false;
-        var cursor = nodeOffset;
-        var uniformMask = body[cursor++];
-        Span<TStorage> values = stackalloc TStorage[8];
-        Span<uint> distances = stackalloc uint[8];
-        for (var child = 0; child < 8; child++)
-        {
-            if ((uniformMask & (1 << child)) != 0)
-            {
-                if (!TryReadValue(body, ref cursor, out values[child])) return false;
-            }
-            else if (!OctreeCodec.TryReadVarUInt(body, ref cursor, out distances[child])) return false;
-        }
-
-        var childCount = destination.Length >> 3;
-        for (var morton = 0; morton < 8; morton++)
-        {
-            var child = OctreeCodec.MortonChild(morton);
-            var output = destination.Slice(morton * childCount, childCount);
-            if ((uniformMask & (1 << child)) != 0) output.Fill(values[child]);
-            else
-            {
-                var distance = distances[child];
-                if (level == 1 || distance == 0 || distance > (uint)(nodeOffset - HeaderSize) ||
-                    !TryDecodeMortonNode(body, nodeOffset - (int)distance, level - 1, output)) return false;
-            }
         }
         return true;
     }

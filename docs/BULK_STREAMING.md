@@ -92,6 +92,9 @@ the persisted dense payload remains linear little-endian UInt32 data; input
 layout is not a new serialized octree format. This fallback still requires a
 layout permutation when importing or exporting Morton data.
 
+The generic `Octree<T>` and `OctreeSpan<T>` APIs use the same strategy for all
+supported storage widths; see [generic voxel values](GENERIC_VALUES.md).
+
 ## Extract a lower-level dense block
 
 ```csharp

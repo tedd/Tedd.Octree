@@ -1,6 +1,6 @@
 using System;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>A mutable, allocation-free view over channel-major dense cubic <typeparamref name="T"/> data.</summary>
 public ref struct DenseVoxelBlockSpan<T> where T : unmanaged
@@ -69,6 +69,11 @@ internal static class DenseVoxelGenericExtensions
         }
         if (source.Overlaps(destination))
             throw new ArgumentException("Layout conversion buffers must not overlap.");
-        DenseVoxel.ConvertLayout(source, destination, levels, sourceLayout);
+        var side = 1 << levels;
+        for (var x = 0; x < side; x++)
+        for (var y = 0; y < side; y++)
+        for (var z = 0; z < side; z++)
+            destination[DenseVoxel.Index(x, y, z, side, destinationLayout)] =
+                source[DenseVoxel.Index(x, y, z, side, sourceLayout)];
     }
 }

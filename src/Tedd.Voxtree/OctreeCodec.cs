@@ -77,14 +77,7 @@ internal static class OctreeCodec
         var denseLength = GetDenseSize(source.Length);
 
         var writer = new OctreeWriter(Span<byte>.Empty, measureOnly: true, denseLength);
-        if (!BuildSubtree(
-                source,
-                levels,
-                baseIndex: 0,
-                rowStride: 1 << levels,
-                planeStride: 1 << (levels * 2),
-                ref writer,
-                out var root, layout))
+        if (!BuildRoot(source, levels, layout, ref writer, out var root))
         {
             return BuildPlan.Dense(denseLength);
         }
@@ -135,14 +128,7 @@ internal static class OctreeCodec
         var denseLength = GetDenseSize(source.Length);
         var speculativeLength = Math.Min(destination.Length, denseLength);
         var writer = new OctreeWriter(destination[..speculativeLength], measureOnly: false);
-        var treeCompleted = BuildSubtree(
-                source,
-                levels,
-                baseIndex: 0,
-                rowStride: 1 << levels,
-                planeStride: 1 << (levels * 2),
-                ref writer,
-                out var root, layout);
+        var treeCompleted = BuildRoot(source, levels, layout, ref writer, out var root);
 
         if (treeCompleted && root.IsUniform)
         {
@@ -459,17 +445,20 @@ internal static class OctreeCodec
             destination[index] = BinaryPrimitives.ReadUInt32LittleEndian(source.Slice(index * sizeof(uint), sizeof(uint)));
     }
 
-    private static bool BuildSubtree(
+    private static bool BuildRoot(ReadOnlySpan<uint> source, int levels, DenseVoxelLayout layout,
+        ref OctreeWriter writer, out SubtreeResult result) => layout == DenseVoxelLayout.Morton
+        ? BuildMortonSubtree(source, levels, -1, ref writer, out result)
+        : BuildLinearSubtree(source, levels, 0, 1 << levels, 1 << (levels * 2), ref writer, out result);
+
+    private static bool BuildLinearSubtree(
         ReadOnlySpan<uint> source,
         int level,
         int baseIndex,
         int rowStride,
         int planeStride,
         ref OctreeWriter writer,
-        out SubtreeResult result, DenseVoxelLayout layout)
+        out SubtreeResult result)
     {
-        if (layout == DenseVoxelLayout.Morton)
-            return BuildMortonSubtree(source, level, -1, ref writer, out result);
         if (level == 0)
         {
             result = SubtreeResult.Uniform(source[baseIndex]);
@@ -499,14 +488,14 @@ internal static class OctreeCodec
                             (((child >> 1) & 1) * half * rowStride) +
                             ((child & 1) * half);
 
-            if (!BuildSubtree(
+            if (!BuildLinearSubtree(
                     source,
                     level - 1,
                     childBase,
                     rowStride,
                     planeStride,
                     ref writer,
-                    out children[child], layout))
+                    out children[child]))
             {
                 result = default;
                 return false;
@@ -575,6 +564,7 @@ internal static class OctreeCodec
         return WriteNode(children, ref writer, out result);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool WriteNode(scoped ReadOnlySpan<SubtreeResult> children,
         ref OctreeWriter writer, out SubtreeResult result)
     {
