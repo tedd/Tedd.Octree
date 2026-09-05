@@ -18,6 +18,8 @@ All notable changes to Tedd.Voxtree are documented here.
 - Effectively unbounded `WorldEntity`/`WorldEntity<T>` coordinate layers backed by
   chunk dictionaries, signed 64-bit coordinates, bit-shift routing for mandatory
   power-of-two chunk sides, and hash-indexed ten-entry recent-chunk caches.
+- Morton-backed `HotOctreeChunk`/`HotOctreeChunk<T>` editors with chunk/world
+  promotion, repeated mutable edits, and one-step octree commit or unmarking.
 - Exact-width generic voxel APIs for arbitrary `IBinaryInteger<TSelf>` values and
   unmanaged custom structs of 1, 2, 4, 8, or 16 bytes, including chunks,
   neighborhoods, spatial queries, dense layouts, and sparse worlds.
@@ -46,6 +48,7 @@ All notable changes to Tedd.Voxtree are documented here.
 ### Performance design
 
 - Morton reconstruction reuses scanned uniform prefixes across tree depths; full and aligned-subtree Morton decoding writes contiguous output intervals without per-voxel coordinate conversion.
+- Hot chunks retain dense Morton storage across repeated edits and defer octree reconstruction until commit.
 - Added explicit dense-layout overloads for `CopyTo` and `TryCopyTo`; linear/Morton permutation reuses axis encodings from Tedd.MortonEncoding.
 - Archived the pre-optimization conversion code with paired BenchmarkDotNet cases for repeatable regression comparisons.
 - Native Morton builds avoid a conversion scratch buffer; uniform blocks and aligned homogeneous Morton octants use contiguous fills during extraction.
@@ -67,6 +70,9 @@ All notable changes to Tedd.Voxtree are documented here.
 - Worlds implement `IDisposable` to release synchronization resources after all workers have stopped.
 - Owned `Octree` rebuilds atomically publish immutable encodings; concurrent rebuild/read and rebuild/rebuild operations are supported with stable input buffers. Captured spans retain their original encoding.
 - Immutable chunks remain usable after world replacement/eviction; borrowed backing-memory lifetime remains the caller's responsibility. Mutable dense views and neighborhood caches require worker-exclusive storage.
+- Hot-chunk publication uses the world write lock and source-identity validation;
+  stale editors cannot overwrite newer snapshots, and failed publication retains
+  mutable edits for retry.
 - Added concurrency stress tests, batching benchmarks, and dirty-channel coalescing/publication guidance.
 
 ### License

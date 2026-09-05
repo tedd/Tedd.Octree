@@ -8,7 +8,7 @@ namespace Tedd.Voxtree;
 /// Maps immutable generic chunks into an effectively unbounded, signed global voxel coordinate system.
 /// </summary>
 /// <remarks>This type is not thread-safe; synchronize access when chunks can change concurrently with reads.</remarks>
-public sealed class WorldEntity<T> where T : unmanaged
+public sealed partial class WorldEntity<T> where T : unmanaged
 {
     /// <summary>Number of most-recently-used chunks retained by the lookup cache.</summary>
     public const int RecentChunkCapacity = WorldEntity.RecentChunkCapacity;

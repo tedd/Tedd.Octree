@@ -144,6 +144,19 @@ OctreeChunk changed = chunk.WithDenseChannel(3, dense.GetChannelSpan(3), DenseVo
 OctreeChunk rebuilt = OctreeChunk.FromDense(levels, channels, denseValues, DenseVoxelLayout.Morton);
 ```
 
+For repeated edits to the same chunk, retain a hot editor instead of decoding and
+rebuilding for every change:
+
+```csharp
+HotOctreeChunk hot = chunk.MarkHot();
+hot[0, 1, 2, 3] = 43;
+hot.GetChannelSpan(3).Clear();
+OctreeChunk snapshot = hot.UnmarkHot(); // Encodes every channel once and closes the editor.
+```
+
+The hot buffer is channel-major and always Morton ordered. It is exclusively
+owned mutable storage; `OctreeChunk` remains the immutable publication format.
+
 `DenseVoxelBlockSpan` is a mutable ref struct: its storage remains caller-owned
 and exclusive while editing. `OctreeChunk` snapshots are immutable. Each dense
 factory allocates encoded output arrays plus chunk/descriptors; it does not claim
@@ -238,12 +251,13 @@ world.CopyRegionTo(channel: 0, narrow, narrowValues);
 
 Origins need not coincide with chunk boundaries; extraction traverses only
 intersecting stored regions. To modify a large area, iterate its affected chunk
-coordinates, extract each complete chunk into reusable dense working storage,
-edit it, and publish a replacement with `LoadChunk`. This preserves voxels outside
-the edit area and avoids rebuilding the outer world or unrelated channels.
+coordinates and call `MarkChunkHot` for each resident or known-empty chunk. Edit
+the returned Morton buffers repeatedly, then publish each with `CommitHotChunk`
+or `UnmarkChunkHot`. This preserves voxels outside the edit area and avoids
+rebuilding the outer world between edits.
 Cross-chunk extraction is one operation; replacement of multiple chunks is a
 sequence of publications, not a multi-chunk transaction. Synchronize that batch
-at the application level when readers require a consistent snapshot.
+with `BeginWriteBatch` when readers require one consistent publication point.
 
 ## Save, unload, reload
 
@@ -343,8 +357,8 @@ can track per-chunk revisions. Chunk-local caches must not be queried outside
 their bounds. Use world queries/extraction or multiple chunk caches at borders.
 
 World operations acquire shared read or exclusive write locks automatically.
-Mutable neighborhood caches and dense working buffers remain exclusive to their
-worker. A retained chunk snapshot can be read without world locks, including
+Hot chunks, mutable neighborhood caches, and dense working buffers remain
+exclusive to their worker. A retained chunk snapshot can be read without world locks, including
 after replacement or eviction, provided its borrowed backing storage is still
 alive and immutable. A world lock does not protect external buffer mutation.
 Use a read batch when pairing a chunk lookup with `Revision` or when sizing a
@@ -358,6 +372,8 @@ manifest from `BranchCount` before enumeration.
 | Caller-buffer linear/Morton build | 0 |
 | `OctreeChunk.FromDense` | Final channel arrays, descriptors, wrapper |
 | `WithDenseChannel` | One final channel array, descriptors, wrapper |
+| `MarkHot` / `MarkChunkHot` | One dense Morton array and editor wrapper |
+| Hot-chunk commit | Final channel arrays, descriptors, immutable chunk wrapper |
 | Chunk constructor / `FromEncoded` | Descriptors and wrapper; payloads borrowed |
 | `CopyEncodedTo` | 0 |
 | World construction | Workspace/slot arrays, wrapper, and synchronization object; caller-memory overload omits arrays |
@@ -413,37 +429,35 @@ inside a batch; no-op loads and failed capacity checks do not. Capturing several
 chunks in a short read batch then querying those immutable snapshots outside it
 can reduce writer blocking when a stable historical view is sufficient.
 
-### Should dirty blocks be queued?
+### Hot chunks and deferred publication
 
-Coalescing **dense voxel edits before rebuilding a changed channel** is the
-likely useful optimization for this implementation. A resident nonempty chunk
-replacement already performs an outer-path lookup, swaps its immutable payload
-reference, and advances the revision. It does not rebuild the outer tree. Branch
-splitting/collapse occurs when residency or empty/unloaded state changes. Merely
-queuing already-encoded replacements primarily amortizes locking and can discard
-superseded versions; it does not save encoding that already happened.
+`HotOctreeChunk` directly supports coalescing dense voxel edits before rebuilding.
+`MarkChunkHot` captures the current immutable chunk under the read lock and decodes
+an exclusively owned, channel-major Morton array outside it. The resident snapshot
+remains visible to readers while the editor is modified. A bounded world can also
+promote a known-empty chunk; an unloaded chunk cannot be promoted.
 
 A suitable application workflow is:
 
-1. Give a worker exclusive ownership of each mutable dirty chunk, and coalesce
-   repeated edits by chunk/channel. Keep actively simulated chunks dense.
-2. At a simulation tick or bounded flush, encode each changed channel once using
-   `WithDenseChannel`, or build a complete `OctreeChunk`. Encode outside world locks
-   from a stable buffer or private snapshot.
-3. Publish completed chunks in a short `BeginWriteBatch()` scope. Check the
-   expected previous chunk identity or an application-owned generation under
-   that same write lock before replacing it. Retry or merge a stale result;
-   otherwise a slow worker can overwrite newer edits or reload an evicted chunk.
+1. Give one worker exclusive ownership of each `HotOctreeChunk` and coalesce
+   repeated edits by chunk/channel.
+2. At a simulation tick or bounded flush, call `TryCommitHotChunk`. Without an
+   enclosing write batch, it encodes once before acquiring the exclusive world
+   lock, verifies that the source snapshot remains current, and publishes it.
+   A stale source or insufficient world capacity returns false; a still-mutable
+   editor retains its modifications for retry or merge.
+3. To publish several prepared chunks together, call `Commit()` on each editor
+   outside the lock, then call the world's `TryCommitHotChunk` methods inside a
+   short `BeginWriteBatch()` scope. The source-identity checks still apply.
 4. Bound pending work and publication batch size. Define backpressure, flush on
    save/shutdown, and handling of fixed world-capacity failures.
 
 A dedicated maintenance thread is optional. The simulation loop can flush at
 explicit ticks, or existing workers can encode and a designated owner can publish.
 Add background maintenance when measured rebuild time or publication latency
-justifies it. Readers then see the last published state until a flush. Immediate
-read-after-edit semantics would require consulting the dirty working state as
-well, complicating cross-chunk queries and cache invalidation. No background
-queue or delayed visibility is enabled by the library.
+justifies it. Readers see the last published immutable state until a flush;
+the owning worker reads pending values through the hot editor. No background
+queue or automatic flush is enabled by the library.
 
 `WorldSynchronization` benchmarks individual versus batched reads/writes and
 retained-chunk reads. They measure uncontended costs; use representative worker

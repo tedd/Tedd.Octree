@@ -53,7 +53,7 @@ public readonly struct ChunkCoordinate : IEquatable<ChunkCoordinate>
 /// so each global coordinate is routed with an arithmetic shift and a bit mask. This type is not
 /// thread-safe; synchronize access when chunks can be changed concurrently with reads.
 /// </remarks>
-public sealed class WorldEntity
+public sealed partial class WorldEntity
 {
     /// <summary>Number of most-recently-used chunks retained by the lookup cache.</summary>
     public const int RecentChunkCapacity = 10;

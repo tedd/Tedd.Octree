@@ -67,6 +67,12 @@ public class DocumentationExamplesTests
             // Or rebuild all channels after a multi-channel edit.
             OctreeChunk rebuilt = OctreeChunk.FromDense(levels, channels, denseValues, DenseVoxelLayout.Morton);
 
+            // Retain Morton storage across repeated edits, then encode every channel once.
+            HotOctreeChunk hot = chunk.MarkHot();
+            hot[0, 1, 2, 3] = 43;
+            hot.GetChannelSpan(3).Clear();
+            OctreeChunk hotSnapshot = hot.UnmarkHot();
+
             // These memories must remain alive and immutable while the chunk is retained.
             var encodings = new ReadOnlyMemory<byte>[channels];
             for (int c = 0; c < channels; c++)
@@ -80,6 +86,9 @@ public class DocumentationExamplesTests
             var globalWorld = new WorldEntity(chunkSize: 32, channelCount: channels);
             globalWorld.SetChunk(chunkX: -1, chunkY: 0, chunkZ: 2, chunk);
             uint globalMaterial = globalWorld.Get(channel: 0, x: -31, y: 2, z: 67);
+            var globalHot = globalWorld.MarkChunkHot(-1, 0, 2);
+            globalHot[0, 1, 2, 3] = 44;
+            globalWorld.CommitHotChunk(-1, 0, 2, globalHot);
 
             var world = new OctreeWorld(
                 levels: 10, chunkLevels: 5, channelCount: 4,
@@ -173,6 +182,8 @@ public class DocumentationExamplesTests
             Assert.True(built);
             Assert.Equal(42u, value);
             Assert.Equal(42u, globalMaterial);
+            Assert.Equal(43u, hotSnapshot.GetChannel(0).Get(1, 2, 3));
+            Assert.Equal(44u, globalWorld.Get(0, -31, 2, 67));
         }
         finally { File.Delete(packetPath); }
     }

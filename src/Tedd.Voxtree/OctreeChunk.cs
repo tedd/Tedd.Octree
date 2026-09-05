@@ -43,6 +43,8 @@ public sealed class OctreeChunk
     public int ChannelCount => _channels.Length;
     /// <summary>Whether every voxel in every channel is zero.</summary>
     public bool IsEmpty { get; }
+    /// <summary>Creates an exclusively owned, mutable Morton-order copy for intensive editing.</summary>
+    public HotOctreeChunk MarkHot() => HotOctreeChunk.FromChunk(this);
     /// <summary>Creates an owned snapshot from channel-major dense data in either order.</summary>
     public static OctreeChunk FromDense(int levels, int channelCount, ReadOnlySpan<uint> values, DenseVoxelLayout layout = DenseVoxelLayout.Linear)
     {

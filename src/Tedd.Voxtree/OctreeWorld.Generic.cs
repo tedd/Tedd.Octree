@@ -46,7 +46,7 @@ public readonly struct OctreeWorldRegion<T> where T : unmanaged
 }
 
 /// <summary>A sparse, fixed-capacity streamed world over generic voxel chunks.</summary>
-public sealed class OctreeWorld<T> : IDisposable where T : unmanaged
+public sealed partial class OctreeWorld<T> : IDisposable where T : unmanaged
 {
     /// <summary>Maximum world depth.</summary>
     public const int MaxLevels = OctreeWorld.MaxLevels;

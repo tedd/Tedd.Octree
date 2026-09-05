@@ -51,6 +51,9 @@ public sealed class OctreeChunk<T> where T : unmanaged
     /// <summary>Whether every channel value has an all-zero bit representation.</summary>
     public bool IsEmpty { get; }
 
+    /// <summary>Creates an exclusively owned, mutable Morton-order copy for intensive editing.</summary>
+    public HotOctreeChunk<T> MarkHot() => HotOctreeChunk<T>.FromChunk(this);
+
     /// <summary>Creates an owned snapshot from channel-major dense data.</summary>
     public static OctreeChunk<T> FromDense(int levels, int channelCount, ReadOnlySpan<T> values,
         DenseVoxelLayout layout = DenseVoxelLayout.Linear)

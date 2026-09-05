@@ -78,6 +78,19 @@ dictionary and cost more than a direct dictionary miss. `SetChunk`,
 `TryGet`, and `ResolveCoordinates` use global voxel coordinates.
 `WorldEntity` is not thread-safe.
 
+Edit-intensive chunks can be promoted to exclusively owned, channel-major dense
+Morton storage. Repeated edits then avoid repeated octree decode/rebuild cycles:
+
+```csharp
+var hot = world.MarkChunkHot(-1, 0, 2);
+hot[0, 31, 7, 0] = 17;
+world.CommitHotChunk(-1, 0, 2, hot); // Re-encode once and replace the snapshot.
+```
+
+`HotOctreeChunk` and `HotOctreeChunk<T>` are not thread-safe; one worker must own
+each editor. The world continues exposing the immutable source until publication.
+`TryCommitHotChunk` rejects a stale source rather than overwriting a newer chunk.
+
 The dense source must contain exactly `count` values in this order:
 
 ```text
@@ -331,9 +344,10 @@ needed. `SpatialChannels` benchmarks both layouts using identical data; no layou
 is universally optimal. Group publication of related channels at the application
 level if readers require a consistent multi-channel snapshot.
 
-This is a read-optimized chunk representation. Batch voxel edits in mutable dense
-working storage, then rebuild and publish changed channel snapshots. Highly
-active fluid/light chunks may be better kept dense during simulation. Do not
+This is a read-optimized chunk representation. Use `MarkHot()` on an isolated
+chunk, or `MarkChunkHot()` on a world, to retain a mutable Morton-ordered dense
+representation across repeated edits. `Commit()`/`UnmarkHot()` return an immutable
+octree; the world-specific commit methods also publish it. Do not
 rebuild voxel octrees for entity movement: keep entity IDs, positions, velocity,
 and bounds in a separate mutable index and query voxel collision channels for
 terrain interaction.
@@ -389,6 +403,12 @@ using (world.BeginWriteBatch())
 }
 ```
 
+For one active chunk, `CommitHotChunk` performs Morton-to-octree encoding before
+acquiring its write lock and then publishes only if the source snapshot is still
+current. For atomic publication of several hot chunks, call `Commit()` on each
+editor before entering a short write batch, then call `CommitHotChunk` inside it.
+Readers continue seeing the previous immutable snapshots until publication.
+
 Batches are synchronous, stack-only scopes. Dispose on the creating thread in
 reverse acquisition order; do not copy them or hold them across `await`.
 Compatible batches may nest. Writing from a read batch throws
@@ -402,8 +422,8 @@ safe when each build source is stable. The last build to publish wins. Capture
 `AsSpan()` once for several reads of the same encoding. `OctreeChunk` is an
 immutable multi-channel snapshot; a chunk returned by `TryGetChunk` remains usable
 after replacement or eviction. Borrowed bytes and caller-owned workspace must
-retain their documented immutability, exclusivity, and lifetime. Mutable dense
-views and neighborhood caches remain per-worker resources.
+retain their documented immutability and lifetime. Hot chunks, mutable dense
+views, and neighborhood caches remain exclusive per-worker resources.
 
 The [synchronization benchmark](src/Tedd.Voxtree.Benchmark/Results/2026-09-05-threading/README.md)
 measured 26.1 ns per individual world read versus 19.9 ns in 1,024-operation read
