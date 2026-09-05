@@ -40,7 +40,15 @@ public sealed class ChunkStorageOptions
     public CompressionLevel CompressionLevel { get; set; } = CompressionLevel.Optimal;
 
     /// <summary>Returns the sharded path for a chunk coordinate.</summary>
-    public string GetChunkPath(ChunkCoordinate coordinate) => ChunkFile.GetPath(this, coordinate);
+    public string GetChunkPath(ChunkCoordinate coordinate) =>
+        ChunkFile.GetPath(this, new ChunkAddress(0, coordinate));
+
+    /// <summary>Returns the sharded path for a base or LOD chunk address.</summary>
+    public string GetChunkPath(ChunkAddress address) => ChunkFile.GetPath(this, address);
+
+    /// <summary>Returns the sharded path for a coordinate in an LOD layer.</summary>
+    public string GetChunkPath(int lodLevel, ChunkCoordinate coordinate) =>
+        GetChunkPath(new ChunkAddress(lodLevel, coordinate));
 
     /// <summary>Reports whether the current target framework natively supports a format.</summary>
     public static bool IsCompressionSupported(ChunkCompression compression) => compression switch
@@ -64,46 +72,61 @@ public sealed class ChunkStorageOptions
 /// <summary>Residency and replacement metadata for one loaded chunk.</summary>
 public readonly struct ChunkResidencyInfo
 {
-    internal ChunkResidencyInfo(ChunkCoordinate coordinate, long estimatedBytes,
-        ulong lastAccessSequence, bool isDirty)
+    internal ChunkResidencyInfo(ChunkAddress address, long estimatedBytes,
+        ulong lastAccessSequence, bool isDirty, bool isImplicitEmpty)
     {
-        Coordinate = coordinate;
+        Address = address;
         EstimatedBytes = estimatedBytes;
         LastAccessSequence = lastAccessSequence;
         IsDirty = isDirty;
+        IsImplicitEmpty = isImplicitEmpty;
     }
 
+    /// <summary>The complete base or LOD address.</summary>
+    public ChunkAddress Address { get; }
     /// <summary>The chunk coordinate.</summary>
-    public ChunkCoordinate Coordinate { get; }
+    public ChunkCoordinate Coordinate => Address.Coordinate;
+    /// <summary>The zero-based LOD level.</summary>
+    public int LodLevel => Address.LodLevel;
     /// <summary>The encoded packet bytes attributed to this resident chunk.</summary>
     public long EstimatedBytes { get; }
     /// <summary>A world-local monotonic timestamp; larger values were used more recently.</summary>
     public ulong LastAccessSequence { get; }
     /// <summary>Whether the resident snapshot has changed since it was loaded or saved.</summary>
     public bool IsDirty { get; }
+    /// <summary>Whether this is a clean zero chunk materialized for absent storage.</summary>
+    public bool IsImplicitEmpty { get; }
 }
 
 internal static class ChunkFile
 {
-    private const int HeaderSize = 44;
-    private const byte Version = 1;
+    private const int LegacyHeaderSize = 44;
+    private const int HeaderSize = 48;
+    private const byte LegacyVersion = 1;
+    private const byte Version = 2;
     private static readonly uint[] Crc32Table = CreateCrc32Table();
 
-    internal static string GetPath(ChunkStorageOptions options, ChunkCoordinate coordinate)
+    internal static string GetPath(ChunkStorageOptions options, ChunkAddress address)
     {
+        var coordinate = address.Coordinate;
         var xShard = ((byte)coordinate.X).ToString("x2", CultureInfo.InvariantCulture);
         var zShard = ((byte)coordinate.Z).ToString("x2", CultureInfo.InvariantCulture);
         var name = string.Concat(
             coordinate.X.ToString(CultureInfo.InvariantCulture), "_",
             coordinate.Y.ToString(CultureInfo.InvariantCulture), "_",
             coordinate.Z.ToString(CultureInfo.InvariantCulture), ".vxc");
-        return Path.Combine(options.DirectoryPath, xShard, zShard, name);
+        var layerDirectory = address.LodLevel == 0
+            ? options.DirectoryPath
+            : Path.Combine(options.DirectoryPath,
+                "lod-" + address.LodLevel.ToString(CultureInfo.InvariantCulture));
+        return Path.Combine(layerDirectory, xShard, zShard, name);
     }
 
-    internal static void Save(ChunkStorageOptions options, ChunkCoordinate coordinate,
+    internal static void Save(ChunkStorageOptions options, ChunkAddress address,
         ReadOnlySpan<byte> packet)
     {
         ValidateCompression(options.Compression, storedValue: false);
+        var coordinate = address.Coordinate;
         var payload = ChunkCompressionCodec.Compress(packet, options.Compression, options.CompressionLevel);
         var file = new byte[checked(HeaderSize + payload.Length)];
         file[0] = (byte)'T'; file[1] = (byte)'V'; file[2] = (byte)'C'; file[3] = (byte)'F';
@@ -115,17 +138,28 @@ internal static class ChunkFile
         BinaryPrimitives.WriteInt64LittleEndian(file.AsSpan(24), coordinate.Y);
         BinaryPrimitives.WriteInt64LittleEndian(file.AsSpan(32), coordinate.Z);
         BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(40), ComputeCrc32(packet));
+        BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(44), address.LodLevel);
         payload.CopyTo(file, HeaderSize);
-        WriteAtomically(GetPath(options, coordinate), file);
+        WriteAtomically(GetPath(options, address), file);
     }
 
-    internal static byte[] Load(ChunkStorageOptions options, ChunkCoordinate coordinate, int maximumPacketLength)
+    internal static byte[] Load(ChunkStorageOptions options, ChunkAddress address, int maximumPacketLength)
     {
-        var path = GetPath(options, coordinate);
+        var coordinate = address.Coordinate;
+        var path = GetPath(options, address);
         var file = File.ReadAllBytes(path);
-        if (file.Length < HeaderSize || file[0] != 'T' || file[1] != 'V' ||
-            file[2] != 'C' || file[3] != 'F' || file[4] != Version ||
-            file[6] != 0 || file[7] != HeaderSize)
+        if (file.Length < LegacyHeaderSize || file[0] != 'T' || file[1] != 'V' ||
+            file[2] != 'C' || file[3] != 'F')
+            throw new InvalidDataException("Invalid chunk-file header.");
+
+        int headerSize;
+        if (file[4] == LegacyVersion && address.LodLevel == 0 &&
+            file[6] == 0 && file[7] == LegacyHeaderSize)
+            headerSize = LegacyHeaderSize;
+        else if (file[4] == Version && file.Length >= HeaderSize &&
+                 file[6] == 0 && file[7] == HeaderSize)
+            headerSize = HeaderSize;
+        else
             throw new InvalidDataException("Invalid chunk-file header.");
 
         var compression = (ChunkCompression)file[5];
@@ -133,14 +167,17 @@ internal static class ChunkFile
         var packetLength = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(8));
         var payloadLength = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(12));
         if (packetLength <= 0 || packetLength > maximumPacketLength || payloadLength < 0 ||
-            payloadLength != file.Length - HeaderSize)
+            payloadLength != file.Length - headerSize)
             throw new InvalidDataException("Invalid chunk-file lengths.");
         if (BinaryPrimitives.ReadInt64LittleEndian(file.AsSpan(16)) != coordinate.X ||
             BinaryPrimitives.ReadInt64LittleEndian(file.AsSpan(24)) != coordinate.Y ||
             BinaryPrimitives.ReadInt64LittleEndian(file.AsSpan(32)) != coordinate.Z)
             throw new InvalidDataException("Chunk-file coordinates do not match its path.");
+        if (headerSize == HeaderSize &&
+            BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(44)) != address.LodLevel)
+            throw new InvalidDataException("Chunk-file LOD level does not match its path.");
 
-        var packet = ChunkCompressionCodec.Decompress(file, HeaderSize, payloadLength,
+        var packet = ChunkCompressionCodec.Decompress(file, headerSize, payloadLength,
             packetLength, compression);
         if (ComputeCrc32(packet) != BinaryPrimitives.ReadUInt32LittleEndian(file.AsSpan(40)))
             throw new InvalidDataException("Chunk-file checksum mismatch.");

@@ -70,7 +70,8 @@ uint material = world.Get(channel: 0, x: -1, y: 7, z: 64);
 // Global (-1, 7, 64) resolves to chunk (-1, 0, 2), local (31, 7, 0).
 ```
 
-`WorldEntity.Chunks` is a read-only view of its chunk dictionary. Point and
+`WorldEntity.Chunks` is a read-only view of its base-layer chunk dictionary;
+`ResidentChunks` includes base and LOD addresses. Point and
 chunk reads first consult a hash-indexed cache of the ten most recently used
 chunks. This improves highly local reads; cold misses still fall back to the
 dictionary and cost more than a direct dictionary miss. `SetChunk`,
@@ -102,20 +103,28 @@ var storage = new ChunkStorageOptions("world/chunks")
 };
 var streamed = new WorldEntity(32, 4, storage, maxResidentBytes: 512L * 1024 * 1024);
 streamed.SetChunk(-1, 0, 2, chunk);       // New snapshots are dirty.
-streamed.SaveChunk(-1, 0, 2);            // Atomic checked file replacement.
-streamed.RemoveChunk(-1, 0, 2);
-streamed.TryGetOrLoadChunk(-1, 0, 2, out chunk);
+streamed.SaveAllChunks();                 // Writes dirty chunks only.
+streamed.UnloadChunk(-1, 0, 2);          // Flushes if dirty, then unloads.
+uint value = streamed.Get(0, -1, 7, 64); // Loads automatically on demand.
+
+// A missing file is materialized as a clean zero chunk and remains fileless.
+uint air = streamed.Get(0, 3200, 0, 0);
 
 streamed.MaxResidentBytes = 256L * 1024 * 1024; // Dynamic soft target.
 int evicted = streamed.TrimToMemoryTarget();     // Save dirty LRU chunks, then evict.
 ```
 
-Files record their compression format, coordinates, lengths, and CRC32, followed
+Files record their compression format, LOD level, coordinates, lengths, and CRC32, followed
 by the versioned chunk packet. The save preference therefore need not match the
 format of existing files. Supported formats are direct octree packets, Brotli,
 Deflate, GZip, ZLib, and Zstandard. Zstandard is the default and uses .NET 11's
 native implementation; select another format on earlier targets. ZLib is native
 on the .NET 10/11 targets but is unavailable through the .NET Standard 2.1 asset.
+
+`SetChunk` and committed hot edits mark their address dirty. `SaveAllChunks`
+writes only dirty residents; `UnloadChunk`, `RemoveChunk`, `Clear`, and LRU
+eviction flush dirty data before release. Disk-loaded chunks and missing-file
+zero chunks remain clean, so an untouched implicit-zero chunk is never written.
 
 `EstimatedResidentBytes` counts serialized chunk-packet bytes, not total CLR
 object or process memory. `MaxResidentBytes` is consequently a soft target.
@@ -124,6 +133,23 @@ while storage loads trim older residents automatically and retain the requested
 chunk if it alone exceeds the target. World accessors advance each chunk's exact
 world-local `LastAccessSequence`; metadata inspection and `Chunks` enumeration do
 not. Storage operations are synchronous, and `WorldEntity` remains non-thread-safe.
+
+LOD storage uses the same fixed-size chunk schema while each successive level
+covers twice the base-world distance per axis. For 32-sample chunks, LOD 0 covers
+32 base voxels, LOD 1 covers 64, and LOD 2 covers 128; routing uses shifts 5, 6,
+and 7 respectively:
+
+```csharp
+var lodAddress = streamed.GetChunkAddress(lodLevel: 2, x: -1, y: 7, z: 128);
+streamed.SetChunk(lodAddress, externallyGeneratedLodChunk);
+streamed.SaveChunk(lodAddress);
+uint coarse = streamed.GetLod(lodLevel: 2, channel: 0, x: -1, y: 7, z: 128);
+```
+
+`ChunkAddress` keeps LOD namespaces independent on disk and in memory. The
+library performs only power-of-two addressing, storage, and residency. LOD
+generation, invalidation, selection, and semantic consistency remain the
+application's responsibility.
 
 The dense source must contain exactly `count` values in this order:
 

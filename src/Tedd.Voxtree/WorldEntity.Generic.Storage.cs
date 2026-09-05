@@ -42,117 +42,180 @@ public sealed partial class WorldEntity<T> where T : unmanaged
     /// <summary>Total serialized packet bytes attributed to resident chunks.</summary>
     public long EstimatedResidentBytes => _chunks.EstimatedBytes;
 
-    /// <summary>Gets last-access, size, and dirty-state metadata without changing recency.</summary>
+    /// <summary>Gets base-layer residency metadata without changing recency.</summary>
     public bool TryGetChunkResidencyInfo(ChunkCoordinate coordinate, out ChunkResidencyInfo info) =>
-        _chunks.TryGetResidencyInfo(coordinate, out info);
+        TryGetChunkResidencyInfo(new ChunkAddress(0, coordinate), out info);
 
-    /// <summary>Gets last-access, size, and dirty-state metadata without changing recency.</summary>
+    /// <summary>Gets base-layer residency metadata without changing recency.</summary>
     public bool TryGetChunkResidencyInfo(long chunkX, long chunkY, long chunkZ,
         out ChunkResidencyInfo info) =>
-        TryGetChunkResidencyInfo(new ChunkCoordinate(chunkX, chunkY, chunkZ), out info);
+        TryGetChunkResidencyInfo(new ChunkAddress(0, chunkX, chunkY, chunkZ), out info);
 
-    /// <summary>Saves a resident chunk. False means it is not resident.</summary>
-    public bool TrySaveChunk(ChunkCoordinate coordinate)
+    /// <summary>Gets base or LOD residency metadata without changing recency.</summary>
+    public bool TryGetChunkResidencyInfo(ChunkAddress address, out ChunkResidencyInfo info)
     {
-        if (!_chunks.TryPeekValue(coordinate, out var chunk)) return false;
-        SaveChunkCore(coordinate, chunk!);
+        ValidateChunkAddress(address);
+        return _chunks.TryGetResidencyInfo(address, out info);
+    }
+
+    /// <summary>Saves a resident base-layer chunk. False means it is not resident.</summary>
+    public bool TrySaveChunk(ChunkCoordinate coordinate) =>
+        TrySaveChunk(new ChunkAddress(0, coordinate));
+
+    /// <summary>Saves a resident base-layer chunk. False means it is not resident.</summary>
+    public bool TrySaveChunk(long chunkX, long chunkY, long chunkZ) =>
+        TrySaveChunk(new ChunkAddress(0, chunkX, chunkY, chunkZ));
+
+    /// <summary>Saves a resident base or LOD chunk. False means it is not resident.</summary>
+    public bool TrySaveChunk(ChunkAddress address)
+    {
+        ValidateChunkAddress(address);
+        if (!_chunks.TryPeekValue(address, out var chunk)) return false;
+        SaveChunkCore(address, chunk!);
         return true;
     }
 
-    /// <summary>Saves a resident chunk. False means it is not resident.</summary>
-    public bool TrySaveChunk(long chunkX, long chunkY, long chunkZ) =>
-        TrySaveChunk(new ChunkCoordinate(chunkX, chunkY, chunkZ));
+    /// <summary>Saves a resident base-layer chunk, throwing when it is not resident.</summary>
+    public void SaveChunk(ChunkCoordinate coordinate) =>
+        SaveChunk(new ChunkAddress(0, coordinate));
 
-    /// <summary>Saves a resident chunk, throwing when it is not resident.</summary>
-    public void SaveChunk(ChunkCoordinate coordinate)
+    /// <summary>Saves a resident base-layer chunk, throwing when it is not resident.</summary>
+    public void SaveChunk(long chunkX, long chunkY, long chunkZ) =>
+        SaveChunk(new ChunkAddress(0, chunkX, chunkY, chunkZ));
+
+    /// <summary>Saves a resident base or LOD chunk, throwing when it is not resident.</summary>
+    public void SaveChunk(ChunkAddress address)
     {
-        if (!TrySaveChunk(coordinate)) throw new InvalidOperationException("The requested chunk is not resident.");
+        if (!TrySaveChunk(address)) throw new InvalidOperationException("The requested chunk is not resident.");
     }
 
-    /// <summary>Saves a resident chunk, throwing when it is not resident.</summary>
-    public void SaveChunk(long chunkX, long chunkY, long chunkZ) =>
-        SaveChunk(new ChunkCoordinate(chunkX, chunkY, chunkZ));
-
-    /// <summary>Saves every currently resident chunk and returns the number saved.</summary>
+    /// <summary>Saves every dirty resident chunk and returns the number written.</summary>
     public int SaveAllChunks()
     {
         var saved = 0;
         foreach (var pair in _chunks.Entries)
         {
+            if (!_chunks.TryPeekEntry(pair.Key, out _, out var isDirty) || !isDirty) continue;
             SaveChunkCore(pair.Key, pair.Value);
             saved++;
         }
         return saved;
     }
 
-    /// <summary>Loads and validates a stored chunk. False means no file exists.</summary>
-    public bool TryLoadChunkFromStorage(ChunkCoordinate coordinate, out OctreeChunk<T>? chunk)
+    /// <summary>Loads and validates a stored base-layer chunk. False means no file exists.</summary>
+    public bool TryLoadChunkFromStorage(ChunkCoordinate coordinate, out OctreeChunk<T>? chunk) =>
+        TryLoadChunkFromStorage(new ChunkAddress(0, coordinate), out chunk);
+
+    /// <summary>Loads and validates a stored base-layer chunk. False means no file exists.</summary>
+    public bool TryLoadChunkFromStorage(long chunkX, long chunkY, long chunkZ, out OctreeChunk<T>? chunk) =>
+        TryLoadChunkFromStorage(new ChunkAddress(0, chunkX, chunkY, chunkZ), out chunk);
+
+    /// <summary>Loads and validates a stored base or LOD chunk. False means no file exists.</summary>
+    public bool TryLoadChunkFromStorage(ChunkAddress address, out OctreeChunk<T>? chunk)
     {
+        ValidateChunkAddress(address);
         var storage = RequireStorage();
         byte[] packet;
-        try { packet = ChunkFile.Load(storage, coordinate, GetMaximumPacketLength()); }
+        try { packet = ChunkFile.Load(storage, address, GetMaximumPacketLength()); }
         catch (FileNotFoundException) { chunk = null; return false; }
         catch (DirectoryNotFoundException) { chunk = null; return false; }
         var loaded = OctreeChunk<T>.FromEncoded(packet);
         ValidateStoredSchema(loaded);
-        _chunks.Set(coordinate, loaded, loaded.SerializedLength, isDirty: false);
-        TrimToMemoryTargetCore(coordinate);
+        _chunks.Set(address, loaded, loaded.SerializedLength, isDirty: false);
+        TrimToMemoryTargetCore(address);
         chunk = loaded;
         return true;
     }
 
-    /// <summary>Loads and validates a stored chunk. False means no file exists.</summary>
-    public bool TryLoadChunkFromStorage(long chunkX, long chunkY, long chunkZ, out OctreeChunk<T>? chunk) =>
-        TryLoadChunkFromStorage(new ChunkCoordinate(chunkX, chunkY, chunkZ), out chunk);
-
-    /// <summary>Gets a resident chunk or loads it from storage. False means no file exists.</summary>
+    /// <summary>Gets, loads, or materializes a clean zero base-layer chunk.</summary>
     public bool TryGetOrLoadChunk(ChunkCoordinate coordinate, out OctreeChunk<T>? chunk) =>
-        TryGetChunk(coordinate, out chunk) || TryLoadChunkFromStorage(coordinate, out chunk);
+        TryGetOrLoadChunk(new ChunkAddress(0, coordinate), out chunk);
 
-    /// <summary>Gets a resident chunk or loads it from storage. False means no file exists.</summary>
+    /// <summary>Gets, loads, or materializes a clean zero base-layer chunk.</summary>
     public bool TryGetOrLoadChunk(long chunkX, long chunkY, long chunkZ, out OctreeChunk<T>? chunk) =>
-        TryGetOrLoadChunk(new ChunkCoordinate(chunkX, chunkY, chunkZ), out chunk);
+        TryGetOrLoadChunk(new ChunkAddress(0, chunkX, chunkY, chunkZ), out chunk);
 
-    /// <summary>Loads a stored chunk, throwing when no file exists.</summary>
-    public OctreeChunk<T> LoadChunkFromStorage(ChunkCoordinate coordinate)
+    /// <summary>Gets, loads, or materializes a clean zero base or LOD chunk.</summary>
+    public bool TryGetOrLoadChunk(ChunkAddress address, out OctreeChunk<T>? chunk)
     {
-        if (TryLoadChunkFromStorage(coordinate, out var chunk)) return chunk!;
-        throw new FileNotFoundException("The requested chunk is not stored.", RequireStorage().GetChunkPath(coordinate));
+        ValidateChunkAddress(address);
+        if (TryGetChunk(address, out chunk) || TryLoadChunkFromStorage(address, out chunk)) return true;
+        var empty = OctreeChunk<T>.Empty(ChunkShift, ChannelCount);
+        _chunks.Set(address, empty, empty.SerializedLength, isDirty: false, isImplicitEmpty: true);
+        TrimToMemoryTargetCore(address);
+        chunk = empty;
+        return true;
     }
 
-    /// <summary>Loads a stored chunk, throwing when no file exists.</summary>
+    /// <summary>Gets, loads, or materializes a clean zero base or LOD chunk.</summary>
+    public OctreeChunk<T> GetOrLoadChunk(ChunkAddress address)
+    {
+        TryGetOrLoadChunk(address, out var chunk);
+        return chunk!;
+    }
+
+    /// <summary>Gets, loads, or materializes a clean zero base-layer chunk.</summary>
+    public OctreeChunk<T> GetOrLoadChunk(ChunkCoordinate coordinate) =>
+        GetOrLoadChunk(new ChunkAddress(0, coordinate));
+
+    /// <summary>Gets, loads, or materializes a clean zero base-layer chunk.</summary>
+    public OctreeChunk<T> GetOrLoadChunk(long chunkX, long chunkY, long chunkZ) =>
+        GetOrLoadChunk(new ChunkAddress(0, chunkX, chunkY, chunkZ));
+
+    /// <summary>Loads a stored base-layer chunk, throwing when no file exists.</summary>
+    public OctreeChunk<T> LoadChunkFromStorage(ChunkCoordinate coordinate) =>
+        LoadChunkFromStorage(new ChunkAddress(0, coordinate));
+
+    /// <summary>Loads a stored base-layer chunk, throwing when no file exists.</summary>
     public OctreeChunk<T> LoadChunkFromStorage(long chunkX, long chunkY, long chunkZ) =>
-        LoadChunkFromStorage(new ChunkCoordinate(chunkX, chunkY, chunkZ));
+        LoadChunkFromStorage(new ChunkAddress(0, chunkX, chunkY, chunkZ));
+
+    /// <summary>Loads a stored base or LOD chunk, throwing when no file exists.</summary>
+    public OctreeChunk<T> LoadChunkFromStorage(ChunkAddress address)
+    {
+        if (TryLoadChunkFromStorage(address, out var chunk)) return chunk!;
+        throw new FileNotFoundException("The requested chunk is not stored.",
+            RequireStorage().GetChunkPath(address));
+    }
 
     /// <summary>Saves dirty least-recently-used chunks and evicts until the soft target is met.</summary>
     public int TrimToMemoryTarget() => TrimToMemoryTargetCore(excluded: null);
 
-    private int TrimToMemoryTargetCore(ChunkCoordinate? excluded)
+    private int TrimToMemoryTargetCore(ChunkAddress? excluded)
     {
         if (!_maxResidentBytes.HasValue) return 0;
         var removed = 0;
         foreach (var candidate in _chunks.GetEvictionCandidates(excluded))
         {
             if (_chunks.EstimatedBytes <= _maxResidentBytes.Value) break;
-            if (candidate.IsDirty) SaveChunkCore(candidate.Coordinate, candidate.Value);
-            _chunks.Remove(candidate.Coordinate);
+            if (candidate.IsDirty) SaveChunkCore(candidate.Address, candidate.Value);
+            _chunks.Remove(candidate.Address);
             removed++;
         }
         return removed;
     }
 
-    private void SaveChunkCore(ChunkCoordinate coordinate, OctreeChunk<T> chunk)
+    private bool UnloadChunkCore(ChunkAddress address)
+    {
+        ValidateChunkAddress(address);
+        if (!_chunks.TryPeekEntry(address, out var chunk, out var isDirty)) return false;
+        if (isDirty && StorageOptions is not null) SaveChunkCore(address, chunk!);
+        return _chunks.Remove(address);
+    }
+
+    private void SaveChunkCore(ChunkAddress address, OctreeChunk<T> chunk)
     {
         var packet = new byte[chunk.SerializedLength];
         chunk.CopyEncodedTo(packet);
-        ChunkFile.Save(RequireStorage(), coordinate, packet);
-        _chunks.MarkClean(coordinate, chunk);
+        ChunkFile.Save(RequireStorage(), address, packet);
+        _chunks.MarkClean(address, chunk);
     }
 
     private ChunkStorageOptions RequireStorage() => StorageOptions ??
         throw new InvalidOperationException("Chunk storage is not configured.");
 
-    private int GetMaximumPacketLength() => checked(12 + ChannelCount * (4 + Octree<T>.GetMaximumSize(ChunkShift)));
+    private int GetMaximumPacketLength() =>
+        checked(12 + ChannelCount * (4 + Octree<T>.GetMaximumSize(ChunkShift)));
 
     private void ValidateStoredSchema(OctreeChunk<T> chunk)
     {

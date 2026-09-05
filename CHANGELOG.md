@@ -25,6 +25,10 @@ All notable changes to Tedd.Voxtree are documented here.
   native .NET 11 Zstandard by default, and format-independent loading.
 - Per-chunk last-access sequences, dirty state, estimated resident-byte accounting,
   dynamically configurable soft targets, and save-before-evict LRU trimming.
+- Automatic disk-backed reads with clean implicit-zero chunks for absent files,
+  dirty-only save-all, and dirty flushes before explicit unload or clear.
+- Caller-generated LOD chunk layers with power-of-two coverage, bit-shift global
+  addressing, independent residency namespaces, and versioned disk persistence.
 - Exact-width generic voxel APIs for arbitrary `IBinaryInteger<TSelf>` values and
   unmanaged custom structs of 1, 2, 4, 8, or 16 bytes, including chunks,
   neighborhoods, spatial queries, dense layouts, and sparse worlds.

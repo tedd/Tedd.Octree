@@ -272,10 +272,14 @@ var storage = new ChunkStorageOptions("world/chunks")
 var global = new WorldEntity(chunkSize: 32, channelCount: 4, storage,
     maxResidentBytes: 512L * 1024 * 1024);
 
-global.SetChunk(-1, 0, 2, chunk);   // Resident and dirty.
-global.SaveChunk(-1, 0, 2);        // Atomic checked replacement; now clean.
-global.RemoveChunk(-1, 0, 2);
-bool found = global.TryGetOrLoadChunk(-1, 0, 2, out var reloaded);
+global.SetChunk(-1, 0, 2, chunk); // Resident and dirty.
+global.SaveAllChunks();           // Writes dirty residents; clean chunks are skipped.
+global.UnloadChunk(-1, 0, 2);    // Flushes if dirty, then unloads.
+uint loaded = global.Get(0, -1, 0, 64); // Reloads automatically.
+
+// Missing storage means known zero, not an error. The clean implicit chunk is
+// never written unless it is subsequently replaced or hot-edited and committed.
+uint air = global.Get(0, 3200, 0, 0);
 
 global.MaxResidentBytes = 256L * 1024 * 1024;
 int evicted = global.TrimToMemoryTarget();
@@ -283,7 +287,8 @@ int evicted = global.TrimToMemoryTarget();
 
 Chunk paths are deterministically sharded into two coordinate-derived directory
 levels, avoiding a single unbounded directory. Each file records its coordinate,
-compression format, compressed and raw lengths, and CRC32. Raw lengths are bounded
+LOD level, compression format, compressed and raw lengths, and CRC32. Raw
+lengths are bounded
 against the configured chunk schema before decompression. The payload is the same
 versioned chunk packet described below. Saves write a same-directory temporary file
 and atomically move or replace it, so an interrupted encoder does not truncate the
@@ -296,7 +301,13 @@ writing another format. The .NET Standard 2.1 asset similarly excludes ZLib;
 Brotli, Deflate, GZip, and direct packets remain available. A file identifies its
 own format, so changing `ChunkStorageOptions.Compression` affects subsequent saves
 without invalidating older files. Replacing a world's `StorageOptions` marks every
-resident dirty so subsequent trimming first persists them under the new root.
+persisted resident dirty so subsequent trimming first persists them under the new root.
+
+Every resident replacement and committed hot edit is dirty. `SaveAllChunks`,
+`Clear`, explicit unload, and LRU eviction persist dirty data before discarding
+it. Clean disk-loaded chunks and clean implicit-zero chunks are skipped. An
+explicit `SaveChunk` can persist an implicit-zero chunk when a physical record is
+required. If a flush fails, the affected chunk remains resident.
 
 Every world lookup updates a monotonic `LastAccessSequence`; storage maintenance
 and metadata inspection do not. `EstimatedResidentBytes` totals serialized packet
@@ -304,15 +315,41 @@ sizes. This intentionally stable metric excludes CLR object headers, dictionary
 capacity, shared backing-memory attribution, hot-editor buffers, and unrelated
 process memory. `MaxResidentBytes` is therefore a soft policy target, not an exact
 heap limit. Assigning it performs no I/O. `TrimToMemoryTarget` saves dirty LRU
-chunks before eviction; loads trim older chunks automatically but protect the
-requested chunk, permitting one oversized chunk to exceed the target. I/O and
-format failures throw, while `TryGetOrLoadChunk` returns false only when a chunk
-is neither resident nor stored.
+chunks before eviction; loads and implicit-zero materialization trim older chunks
+automatically but protect the requested chunk, permitting one oversized chunk to
+exceed the target. I/O and
+format failures throw. A configured world treats an absent file as a clean,
+all-zero resident chunk.
 
 `WorldEntity` storage calls are synchronous and the type remains non-thread-safe.
 Coordinate external workers before loading, saving, trimming, or accessing it.
 An active hot editor retains an immutable source reference; eviction makes a later
 hot commit stale rather than restoring an evicted chunk.
+
+### Persist caller-generated LOD chunks
+
+LOD layers retain the same `ChunkSize` samples per axis while representing
+increasing power-of-two coverage in base-world coordinates:
+
+```csharp
+// For ChunkSize 32: LOD 0/1/2 coverage is 32/64/128 base voxels per axis.
+ChunkAddress address = global.GetChunkAddress(lodLevel: 2, x: -1, y: 7, z: 128);
+global.SetChunk(address, externallyGeneratedLodChunk); // Dirty LOD publication.
+global.SaveChunk(address);
+
+uint sample = global.GetLod(lodLevel: 2, channel: 0, x: -1, y: 7, z: 128);
+```
+
+The address shift is `ChunkShift + LodLevel`; the local sample coordinate uses
+the next `ChunkShift` bits after discarding the LOD bits. Signed coordinates use
+arithmetic shifts. `ResidentChunks` exposes all loaded `ChunkAddress` entries,
+while the compatibility `Chunks` view exposes only LOD 0. LOD files are stored
+under independent `lod-N` roots and record their level in the checked file header.
+Base-layer files written by the preceding header version remain loadable.
+
+The library does not calculate, select, invalidate, or reconcile LOD values.
+Applications must generate each `OctreeChunk`, decide when it is stale, and
+publish replacements through `SetChunk` or the address-aware hot-chunk APIs.
 
 The bounded `OctreeWorld` retains its caller-controlled packet workflow:
 

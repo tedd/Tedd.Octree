@@ -6,8 +6,14 @@ public sealed partial class WorldEntity
 {
     /// <summary>Creates a mutable Morton-order editor from a loaded chunk coordinate.</summary>
     public bool TryMarkChunkHot(ChunkCoordinate coordinate, out HotOctreeChunk? hotChunk)
+        => TryMarkChunkHot(new ChunkAddress(0, coordinate), out hotChunk);
+
+    /// <summary>Creates a mutable Morton-order editor from a base or LOD chunk, loading it on demand.</summary>
+    public bool TryMarkChunkHot(ChunkAddress address, out HotOctreeChunk? hotChunk)
     {
-        if (!_chunks.TryGetValue(coordinate, out var chunk))
+        ValidateChunkAddress(address);
+        if (!_chunks.TryGetValue(address, out var chunk) &&
+            (StorageOptions is null || !TryGetOrLoadChunk(address, out chunk)))
         {
             hotChunk = null;
             return false;
@@ -22,8 +28,12 @@ public sealed partial class WorldEntity
 
     /// <summary>Creates a mutable Morton-order editor, throwing when the chunk is not loaded.</summary>
     public HotOctreeChunk MarkChunkHot(ChunkCoordinate coordinate)
+        => MarkChunkHot(new ChunkAddress(0, coordinate));
+
+    /// <summary>Creates a mutable Morton-order editor for a base or LOD chunk, loading it on demand.</summary>
+    public HotOctreeChunk MarkChunkHot(ChunkAddress address)
     {
-        if (TryMarkChunkHot(coordinate, out var hotChunk)) return hotChunk!;
+        if (TryMarkChunkHot(address, out var hotChunk)) return hotChunk!;
         throw new InvalidOperationException("The requested chunk is not loaded.");
     }
 
@@ -33,12 +43,17 @@ public sealed partial class WorldEntity
 
     /// <summary>Re-encodes and replaces a chunk when the editor's source is still current.</summary>
     public bool TryCommitHotChunk(ChunkCoordinate coordinate, HotOctreeChunk hotChunk)
+        => TryCommitHotChunk(new ChunkAddress(0, coordinate), hotChunk);
+
+    /// <summary>Re-encodes and replaces a base or LOD chunk when its source remains current.</summary>
+    public bool TryCommitHotChunk(ChunkAddress address, HotOctreeChunk hotChunk)
     {
+        ValidateChunkAddress(address);
         ValidateHotChunk(hotChunk);
         var snapshot = hotChunk.BuildSnapshot();
-        if (!_chunks.TryGetValue(coordinate, out var current) ||
+        if (!_chunks.TryGetValue(address, out var current) ||
             !ReferenceEquals(current, hotChunk.SourceChunk)) return false;
-        _chunks.Set(coordinate, snapshot, snapshot.SerializedLength, isDirty: true);
+        _chunks.Set(address, snapshot, snapshot.SerializedLength, isDirty: true);
         hotChunk.Complete(snapshot);
         return true;
     }
@@ -49,8 +64,12 @@ public sealed partial class WorldEntity
 
     /// <summary>Re-encodes and replaces a chunk, throwing when its source is stale.</summary>
     public OctreeChunk CommitHotChunk(ChunkCoordinate coordinate, HotOctreeChunk hotChunk)
+        => CommitHotChunk(new ChunkAddress(0, coordinate), hotChunk);
+
+    /// <summary>Re-encodes and replaces a base or LOD chunk, throwing when its source is stale.</summary>
+    public OctreeChunk CommitHotChunk(ChunkAddress address, HotOctreeChunk hotChunk)
     {
-        if (TryCommitHotChunk(coordinate, hotChunk)) return hotChunk.CommittedChunk!;
+        if (TryCommitHotChunk(address, hotChunk)) return hotChunk.CommittedChunk!;
         throw new InvalidOperationException("The hot chunk source is stale.");
     }
 
@@ -61,6 +80,10 @@ public sealed partial class WorldEntity
     /// <summary>Equivalent to <see cref="CommitHotChunk(ChunkCoordinate, HotOctreeChunk)"/>.</summary>
     public OctreeChunk UnmarkChunkHot(ChunkCoordinate coordinate, HotOctreeChunk hotChunk) =>
         CommitHotChunk(coordinate, hotChunk);
+
+    /// <summary>Equivalent to <see cref="CommitHotChunk(ChunkAddress, HotOctreeChunk)"/>.</summary>
+    public OctreeChunk UnmarkChunkHot(ChunkAddress address, HotOctreeChunk hotChunk) =>
+        CommitHotChunk(address, hotChunk);
 
     private void ValidateHotChunk(HotOctreeChunk hotChunk)
     {
