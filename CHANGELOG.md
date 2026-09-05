@@ -39,6 +39,8 @@ All notable changes to Tedd.Octree are documented here.
 
 ### Performance design
 
+- Native Morton builds avoid a conversion scratch buffer; uniform blocks and aligned homogeneous Morton octants use contiguous fills during extraction.
+- Streaming branches and resident slots use fixed-capacity recyclable arenas; known-empty outer regions collapse without retaining dense buffers or per-chunk payloads.
 - .NET 10/11 use SIMD-enabled span searches and counting, early uniform-region detection, and uninitialized result-array allocation; .NET Standard retains portable fallbacks.
 - Small occupancy footprints use a measured point-query fast path; larger queries prune octants and process homogeneous regions in bulk.
 - Caller-buffer building and span-backed lookup perform zero managed heap allocations.

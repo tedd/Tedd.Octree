@@ -214,6 +214,15 @@ load.
 4. Fixed-capacity arena branches and chunk-reference slots should permit
    allocation-free load/evict cycles and reuse after collapse.
 
+The final bulk/world results and initial optimization comparison are retained
+under [Results/2026-09-05-bulk](Results/2026-09-05-bulk). On the .NET 10 reference
+machine, 32-cubed terrain Morton extraction measured 51.75 us versus 514.15 us for
+point queries. Contiguous fills of aligned homogeneous Morton octants reduced
+four-channel cross-chunk extraction from 204.47 to 14.55 us. Already-dense linear
+extraction remained substantially faster than Morton output. All measured
+bulk/world operations reported zero managed allocations after provisioning;
+factories still allocate their documented snapshots and buffers.
+
 `BulkBlocks` compares native linear builds, native Morton builds, and
 Morton-to-linear conversion plus build, using preallocated destinations. Its
 extraction cases compare linear bulk, Morton bulk, and Morton point-query loops.
@@ -226,6 +235,10 @@ all-channel extraction across eight chunks, region enumeration, and a paired
 load/evict cycle. Chunk construction and index provisioning occur in setup;
 streaming includes index mutation, but no I/O, encoding, or allocation of new
 chunk payloads. This separates world lookup cost from chunk generation cost.
+
+`BulkUniform` measures four-channel known-air extraction at depths 3/5 in both
+layouts, including API validation and output writes. Its root-level fill path
+does not enumerate voxels or calculate Morton indices.
 
     dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
     dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
