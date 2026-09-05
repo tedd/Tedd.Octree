@@ -11,7 +11,7 @@ namespace Tedd.Octree;
 /// The supplied span must be the exact encoded slice. The view does not own, pin,
 /// copy, or extend the lifetime of that memory.
 /// </remarks>
-public readonly ref struct OctreeSpan
+public readonly ref partial struct OctreeSpan
 {
     private readonly ReadOnlySpan<byte> _data;
     private readonly int _levels;

@@ -1,9 +1,11 @@
 # Performance benchmarks
 
-The benchmark project targets .NET 8 and uses BenchmarkDotNet 0.15.8 with its
-memory diagnoser. The archived implementation is the baseline in every
-parameter group. Array operations are lower-bound controls, not equivalent
-octree substitutes.
+The benchmark project targets .NET 11 preview, .NET 10, and .NET 8, and uses
+BenchmarkDotNet 0.16.0-preview.1 with its memory diagnoser. The .NET 8 host selects
+the library's netstandard2.1 asset. The archived implementation is the baseline
+in the original build/lookup suites; spatial suites have explicit point-query or
+packed-channel baselines. Array operations are lower-bound controls, not
+equivalent octree substitutes.
 
 ## Hypotheses
 
@@ -54,9 +56,10 @@ The benchmark-only v1 source is under Archive/V1. It preserves the algorithm
 from commit 3ac31f8 and replaces only the former Tedd helper packages with local
 equivalent operations.
 
-## Reference observations
+## Historical .NET 8 observations
 
-A ShortRun screening measurement on .NET 8.0.30, Windows 11, and an AMD Ryzen 9
+A pre-modernization ShortRun measurement at commit 4b462d5 on .NET 8.0.30,
+BenchmarkDotNet 0.15.8, Windows 11, and an AMD Ryzen 9
 5950X produced the following level-5 results. ShortRun uses one launch and three
 measurement iterations; these figures identify tendencies, not stable acceptance
 thresholds.
@@ -77,20 +80,121 @@ thresholds.
 Re-run the complete matrix on the target machine before making deployment or
 capacity decisions.
 
+## Modern .NET 10 build observations
+
+The level-5 ShortRun report is retained as
+[net10-BuildOctrees.md](Results/2026-09-05/net10-BuildOctrees.md).
+The modern uniform-region scan changes the trade-offs substantially:
+
+- Uniform owned builds measured 1.345 us versus 209.068 us for v1; clustered
+  owned builds measured 12.711 us versus 184.999 us.
+- Sparse owned builds measured 325.647 us versus 249.435 us for v1, while
+  allocating 9,480 B versus 190,880 B. Exact allocation requires a sizing pass
+  and an encoding pass for compressed mixed trees. Reusable caller-span storage
+  avoids the sizing pass and measured 166.718 us with 0 B allocated.
+- Random owned builds measured 336.690 us versus 434.669 us, with approximately
+  131 KB versus 1.16 MB allocated. The random caller-span path measured 436.625 us:
+  its speculative tree writes are discarded before the dense fallback.
+- Every caller-span build reported 0 B. Uniform/clustered gains do not imply
+  universal build or point-lookup superiority.
+
 ## Commands
 
 Run from the repository root:
 
-    dotnet run -c Release --project src/Tedd.Octree.Benchmark -- --list flat
+    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --list flat
 
 Run the complete matrix:
 
-    dotnet run -c Release --project src/Tedd.Octree.Benchmark -- --filter "*"
+    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*"
 
 Run one suite:
 
-    dotnet run -c Release --project src/Tedd.Octree.Benchmark -- --filter "*BuildOctrees*"
-    dotnet run -c Release --project src/Tedd.Octree.Benchmark -- --filter "*AccessOctrees*"
+    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*BuildOctrees*"
+    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*AccessOctrees*"
+
+## Spatial and channel hypotheses
+
+The recorded .NET 10/11 reports are under [Results/2026-09-05](Results/2026-09-05).
+They retain environment information, error estimates, and allocation columns.
+On the .NET 10 reference run:
+
+- Nonempty area-count queries measured about 8-13x faster than repeated point
+  reads; terrain/sparse nearest queries measured about 4-8x faster.
+- Stationary terrain/sparse neighborhood reads improved about 4.7x/7.5x with
+  caching. Dense point reads were faster without a cache. Moving-cache results
+  include refresh costs and have wider uncertainty.
+- An unchanged cache update measured 16 ns, a one-cell move 1.0 us, and full
+  invalidation/refill 2.9 us for the measured sparse window.
+- The final four-cell support query measured 57 ns stationary and 81 ns moving,
+  versus 58/77 ns for point reads. A warm stationary cache measured 20 ns, but
+  moving-cache maintenance raised a single check to 806 ns. Do not provision a
+  moving cache solely for this one short query.
+- Separate attribute channels used 21,856 encoded bytes versus 56,061 packed.
+  Block-only reads measured 10.44 ns separate versus 24.73 ns packed; reading all
+  attributes measured 57.63 ns separate versus 26.14 ns packed.
+- All spatial queries and cache operations reported 0 B per operation. Owned
+  channel builds allocated their final encoded arrays.
+
+These measurements concern the synthetic workloads below, not every voxel
+world, and small runtime-to-runtime differences require longer confirmation.
+
+1. Area traversal should outperform repeated root-to-leaf point queries by
+   skipping disjoint octants and counting homogeneous regions in bulk.
+2. Nearest search should reduce work through octant distance bounds and an
+   immediate hit when the query center itself matches.
+3. A sliding dense cache should improve repeated reads of compressed data when
+   reuse exceeds slab-refresh cost. Already-dense encodings can be faster to
+   query directly; caching is opt-in.
+4. Independent channels should improve compression and selective reads when
+   attributes have different spatial patterns. Packed channels should reduce
+   work when all attributes are read together.
+
+Run the spatial suites separately on each runtime:
+
+    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*Spatial*" --job short
+    dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter "*Spatial*" --job short
+
+SpatialSearch compares 16-cubed box counting and radius-8 nearest searches with
+equivalent point-query loops on a 32-cubed chunk. Empty, terrain, sparse, and
+dense datasets have fixed seeds. Global setup verifies query parity.
+
+SpatialNeighborhood measures 64 simulation steps per invocation, normalizing
+time per step. Each step performs four passes over a 3-cubed neighborhood (108
+reads). The cached variant includes Update, including new-slab refreshes; the
+initial buffer allocation/refill occurs in setup. Moving steps follow a fixed
+one-cell back-and-forth path, including endpoint pauses. These are warm-cache
+workloads, not cold-memory or full-world simulations.
+
+SpatialCacheMaintenance isolates unchanged windows, one-cell movement, and
+explicit invalidation/full refill for an 8-cubed cache over sparse data.
+
+SpatialSupport measures one 2-by-1-by-2 support-footprint test per simulation
+step on terrain, using the same stationary/moving paths as SpatialNeighborhood.
+It compares early-exit point reads, Any on the footprint, and cached Any including
+Update. This deliberately low-reuse workload tests whether cache maintenance is
+justified for a single falling/support decision.
+
+The initial traversal-only Any implementation measured 266 ns for the stationary
+four-cell footprint versus 73 ns for point reads. The final implementation uses
+early-exit point reads for tree-backed boxes of at most four voxels, retaining
+bulk traversal for larger boxes and uniform/dense encodings. The explicitly
+labeled before-fast-path report preserves the rejected implementation's result.
+In the .NET 10 rerun, stationary Any dropped to 57 ns and moving Any to 81 ns.
+The paired point-read controls measured 58/77 ns; small differences are within
+ShortRun uncertainty. This is a targeted improvement, not an argument for
+point-by-point traversal of larger areas.
+
+SpatialChannels compares four independent scalar channels (block, orientation,
+fluid type, fluid amount) with the same attributes packed into one UInt32. It
+separately measures block-only reads, all-channel reads, and owned builds.
+Sources are precomputed, so build timings exclude packing/unpacking input arrays.
+The fixed synthetic data is deliberately heterogeneous in orientation/fluid
+amount while block/type regions remain coherent; conclusions apply to this
+access pattern and distribution. Encoded payload size is printed during setup.
+
+ShortRun results are screening evidence. Use the default longer job to confirm
+small differences; preview-runtime and host-load variance can be substantial.
 
 Pass any additional BenchmarkDotNet command-line options after the separator.
 Do not compare Debug runs or runs conducted concurrently with material system

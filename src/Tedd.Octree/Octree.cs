@@ -12,7 +12,7 @@ namespace Tedd.Octree;
 /// must not allocate. An owned build allocates exactly one byte array for the result.
 /// Published data is immutable, so concurrent readers are safe.
 /// </remarks>
-public sealed class Octree
+public sealed partial class Octree
 {
     /// <summary>The largest supported depth.</summary>
     public const int MaxLevels = 9;

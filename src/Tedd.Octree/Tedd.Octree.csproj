@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
-    <LangVersion>12.0</LangVersion>
+    <TargetFrameworks>net11.0;net10.0;netstandard2.1</TargetFrameworks>
+    <LangVersion Condition="'$(TargetFramework)' == 'net11.0'">preview</LangVersion>
+    <LangVersion Condition="'$(TargetFramework)' != 'net11.0'">14.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
@@ -17,7 +18,7 @@
     <RepositoryUrl>https://github.com/tedd/Tedd.Octree</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>octree;voxel;span;zero-allocation;performance</PackageTags>
-    <PackageReleaseNotes>Version 2 introduces allocation-free caller-buffer builds, a zero-copy OctreeSpan view, full UInt32 values, deterministic versioned encoding with dense fallback, validation, dense decoding, and explicit bounds handling.</PackageReleaseNotes>
+    <PackageReleaseNotes>Version 2 introduces allocation-free caller-buffer builds, zero-copy OctreeSpan views, pruned area/proximity searches, sliding neighborhood caches, full UInt32 values, and deterministic encoding with dense fallback. Targets .NET 11 preview, .NET 10, and .NET Standard 2.1 with conditional modern optimizations.</PackageReleaseNotes>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>

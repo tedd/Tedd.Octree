@@ -9,6 +9,14 @@ For successful, valid-input operations, the caller-buffer build path and `Octree
 
 ## Installation
 
+The package includes `net11.0`, `net10.0`, and `netstandard2.1` assets. .NET 11
+is currently preview; the repository pins SDK `11.0.100-preview.7.26381.103`.
+The .NET 10/11 builds use runtime-vectorized uniform-region detection, equality
+searches/counting, and uninitialized result-array allocation when every byte is
+subsequently written. The .NET Standard build uses portable scalar fallbacks.
+The API and encoded byte format are identical across targets. .NET 11 also
+benefits from its runtime's JIT improvements without a separate encoding.
+
 ```shell
 dotnet add package Tedd.Octree --version 2.0.0
 ```
@@ -158,6 +166,123 @@ tree.CopyTo(dense);
 
 Both representations expose `Levels`, `SideLength`, `Count`, `EncodedLength`, and `Data`. `Octree` also exposes `IsBuilt`; `OctreeSpan` exposes `IsValid` and `IsWellFormed()`. `Octree.MaxLevels` is `9`, and `Octree.FormatVersion` identifies the current byte-format version.
 
+## Area and proximity queries
+
+`Octree` and `OctreeSpan` provide allocation-free spatial queries:
+
+| Method | Behavior |
+| --- | --- |
+| `Any(box, filter)` | Stops at the first matching voxel |
+| `CountMatches(box, filter)` | Counts uniform regions without expanding them |
+| `Query(box, filter, destination, out written)` | Writes `VoxelHit` results; returns false if more matches exist |
+| `CopyRegionTo(box, destination)` | Decodes only a region into packed X/Y/Z-major values |
+| `TryFindNearest(x, y, z, radius, filter, out hit)` | Finds the nearest matching voxel center within an inclusive Euclidean radius |
+
+`VoxelBox` uses inclusive minima and exclusive maxima. Bounds must be inside the
+chunk; an empty box produces no matches. Nearest-query centers must be inside
+the chunk, and ties resolve by ascending X, then Y, then Z. Region traversal
+prunes disjoint octants; nearest traversal also prunes by the closest possible
+distance to an octant. Homogeneous regions are handled in bulk.
+For tree-backed occupancy boxes of at most four cells, `Any` selects point
+lookups to avoid general traversal setup for small support footprints.
+
+`VoxelFilter.Any`, `NonZero`, `EqualTo(value)`, `NotEqualTo(value)`, and
+`Masked(mask, expected)` avoid predicate delegates and boxing. A default filter
+matches everything, including air. Use `NonZero` only when zero means empty in
+the queried channel. For material-dependent collision, maintain a collision
+channel or collision bits and query that classification.
+
+```csharp
+// Integer cells immediately below a 2-by-2 footprint; Y is the vertical axis.
+var feet = new VoxelBox(x, y - 1, z, x + 2, y, z + 2);
+bool hasSupport = collisionChannel.Any(feet, VoxelFilter.NonZero);
+
+if (blocks.TryFindNearest(x, y, z, 8, VoxelFilter.EqualTo(waterBlockId), out var water))
+{
+    // water.X, water.Y, water.Z identify the nearest matching voxel center.
+}
+
+Span<VoxelHit> hits = stackalloc VoxelHit[64];
+bool complete = blocks.Query(searchBox, VoxelFilter.NonZero, hits, out int written);
+// hits[..written] is usable even when complete is false.
+```
+
+These queries operate on voxel cells. They do not implement continuous or swept
+collision detection. A falling decision must also account for entity bounds,
+velocity, collision rules, and neighboring chunks. Split cross-chunk boxes into
+local boxes; the application defines whether an unloaded chunk is solid, empty,
+or unknown. Query and regional decode destinations must not overlap encoded
+bytes. Validate untrusted encoded data before spatial queries; malformed input
+may leave partial destination output.
+
+## Repeated checks around moving entities
+
+`OctreeNeighborhoodCache` is a persistent, reusable dense window. Construct it
+once with a power-of-two side length, or pass caller-owned `Memory<uint>`.
+`OctreeNeighborhoodSpan` provides the same window over `Span<uint>` for stack,
+pooled, or unmanaged storage without allocating a wrapper.
+
+```csharp
+var neighborhood = new OctreeNeighborhoodCache(side: 8); // 2 KiB voxel buffer.
+
+// Before each query batch:
+int refreshed = neighborhood.Update(collisionChannel, entityX, entityY, entityZ);
+bool occupied = neighborhood.Get(entityX, entityY - 1, entityZ) != 0;
+bool supported = neighborhood.Any(footprintInsideCachedBounds, VoxelFilter.NonZero);
+```
+
+Update centers and clamps the window to the chunk. It preserves overlapping cells
+with ring indexing and fills only newly exposed slabs. A one-cell axis move of
+an 8-cubed window refreshes 64 values; an unchanged window refreshes zero.
+Teleports or source replacement refresh the whole window. Rebuilding an owned
+`Octree` changes its encoding identity, which Update detects automatically.
+Call Update before each query batch: Get/Any deliberately read the last cache
+snapshot without consulting the tree.
+
+For a borrowed `OctreeSpan`, pass a revision to
+`Update(view, revision, x, y, z)` and change it on every in-place encoding update.
+`Invalidate()` forces a refill; `Invalidate(changedBox)` does so only when the
+changed region intersects the window. Neither cache form is thread-safe.
+Its storage must remain exclusive and alive while in use. Cache bounds must fit
+inside one chunk; inspect `Bounds` before issuing cached queries.
+
+Cache capacity costs `4 * side^3` bytes plus wrapper metadata. A cache per worker
+or active entity can help repeated local reads, but refresh overhead may exceed
+the benefit for one short occupancy test. The benchmark suite includes this cost.
+The .NET 10 support benchmark measured roughly 81 ns for a moving four-cell
+`Any` check versus 806 ns when maintaining an 8-cubed cache for that check alone.
+Repeated reads of compressed neighborhoods did benefit from caching; already
+dense data generally did not. See the recorded benchmarks below.
+
+## Channels, block updates, and dynamic entities
+
+Use independent `Octree` instances as channels with the same levels and coordinate
+layout. The existing UInt32 payload also supports packed bitfields; `Masked`
+filters can select collision or material bits without unpacking every channel.
+
+| Data | Suggested initial layout |
+| --- | --- |
+| Block/material ID | Independent channel |
+| Collision class/flags | Independent channel or packed material bits |
+| Orientation | Separate when sparsely populated or rarely queried |
+| Fluid type and amount | Consider packing together when read and updated together |
+| Light, temperature, simulation state | Independent channels by update/access pattern |
+| Moving entities | Separate mutable spatial hash/grid or dynamic AABB index |
+
+Independent channels preserve homogeneous regions when an unrelated attribute
+varies, allow selective reads, and let a fluid update avoid rebuilding the block
+channel. Packed attributes reduce traversals when all attributes are always
+needed. `SpatialChannels` benchmarks both layouts using identical data; no layout
+is universally optimal. Group publication of related channels at the application
+level if readers require a consistent multi-channel snapshot.
+
+This is a read-optimized chunk representation. Batch voxel edits in mutable dense
+working storage, then rebuild and publish changed channel snapshots. Highly
+active fluid/light chunks may be better kept dense during simulation. Do not
+rebuild voxel octrees for entity movement: keep entity IDs, positions, velocity,
+and bounds in a separate mutable index and query voxel collision channels for
+terrain interaction.
+
 ## Validation and errors
 
 - Levels outside `0..9` throw `ArgumentOutOfRangeException`.
@@ -199,7 +324,7 @@ The benchmark suite is intended to test these hypotheses rather than presuppose 
 4. Homogeneous and spatially clustered inputs compress substantially below dense `UInt32[]` storage.
 5. Highly heterogeneous inputs select the dense fallback, trading two header bytes for direct indexing rather than tree traversal.
 
-Results vary with data distribution, level count, JIT, runtime, CPU, and access pattern. Treat a claim as measured only when accompanied by current BenchmarkDotNet output for the relevant environment. Historical results under `src/Tedd.Octree.Benchmark/Results` predate v2 and do not establish v2 performance.
+Results vary with data distribution, level count, JIT, runtime, CPU, and access pattern. Treat a claim as measured only when accompanied by current BenchmarkDotNet output for the relevant environment. Historical reports directly under `src/Tedd.Octree.Benchmark/Results` predate v2; the `2026-09-05` subdirectory records the modern v2 spatial, channel, and build measurements.
 
 The recorded .NET 8 reference screening run confirmed 0 B caller-span builds and
 lookups. Random level-5 lookup measured approximately 7.5 times faster than v1,
@@ -218,12 +343,17 @@ dotnet test src/Tedd.Octree.sln -c Release
 Run all BenchmarkDotNet cases:
 
 ```shell
-dotnet run -c Release --project src/Tedd.Octree.Benchmark -- --filter '*'
+dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*'
 ```
 
 The benchmark project retains the version 1 implementation as the internal `Tedd.Octree.Benchmark.Archive.V1.OctreeV1` baseline. It is test infrastructure, not supported public API. Benchmark names and categories label that implementation as `V1` so current, archived, span-backed, and dense-array results remain distinguishable.
 
 Use a Release build, close competing workloads, and compare allocation columns as well as elapsed time. Commit benchmark artifacts only with their runtime, operating system, CPU, and BenchmarkDotNet metadata intact.
+
+Use `-f net11.0` for preview-runtime measurements or `-f net8.0` to exercise the
+portable .NET Standard asset. The test project runs on all three hosts. Spatial
+benchmarks can be selected with `--filter '*Spatial*'`. BenchmarkDotNet
+`0.16.0-preview.1` supplies .NET 11 support.
 
 ## Migrating from version 1
 

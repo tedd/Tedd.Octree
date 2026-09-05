@@ -15,6 +15,12 @@ All notable changes to Tedd.Octree are documented here.
 
 ### Added
 
+- Targets for .NET 11 preview, .NET 10, and .NET Standard 2.1 with equivalent APIs and encoding; cross-target tests run on .NET 11, .NET 10, and .NET 8.
+- Pruned box occupancy/counting, bounded voxel collection, regional decoding, and nearest matching voxel searches.
+- Delegate-free exact, nonzero, and masked value filters.
+- Persistent and caller-span sliding neighborhood caches with ring indexing, slab refreshes, source-identity/revision invalidation, and explicit regional invalidation.
+- Voxel-world guidance covering channels, support checks, chunk boundaries, mutable simulation data, and independent moving-entity indexes.
+- Benchmarks for spatial queries, cache movement/invalidation, and packed versus independent attribute channels.
 - `Octree.GetRequiredSize(ReadOnlySpan<uint>, int)` for exact destination sizing.
 - `Octree.GetMaximumSize(int)` for reusable value-independent destination sizing.
 - Allocation-free caller-buffer `Octree.Build` and `Octree.TryBuild` overloads.
@@ -28,6 +34,8 @@ All notable changes to Tedd.Octree are documented here.
 
 ### Performance design
 
+- .NET 10/11 use SIMD-enabled span searches and counting, early uniform-region detection, and uninitialized result-array allocation; .NET Standard retains portable fallbacks.
+- Small occupancy footprints use a measured point-query fast path; larger queries prune octants and process homogeneous regions in bulk.
 - Caller-buffer building and span-backed lookup perform zero managed heap allocations.
 - Owned building allocates one final encoded `byte[]` and does not retain a temporary object graph.
 - Owned building reuses the sizing pass's terminal storage decision, avoiding a second source traversal for uniform and dense encodings.

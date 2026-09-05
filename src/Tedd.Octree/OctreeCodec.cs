@@ -40,7 +40,12 @@ internal static class OctreeCodec
     internal static byte[] BuildOwned(ReadOnlySpan<uint> source, int levels)
     {
         var plan = CreateBuildPlan(source, levels);
+#if NET10_0_OR_GREATER
+        // Every byte is written before publication; avoid clearing a large dense payload twice.
+        var encoded = GC.AllocateUninitializedArray<byte>(plan.EncodedLength);
+#else
         var encoded = new byte[plan.EncodedLength];
+#endif
 
         if (plan.StorageKind == StorageKind.Uniform)
         {
@@ -435,6 +440,16 @@ internal static class OctreeCodec
             return true;
         }
 
+#if NET10_0_OR_GREATER
+        // Runtime span searches select the supported SIMD width. Collapse a
+        // uniform region before visiting its descendants.
+        if (level >= 2 && IsUniformRegion(source, baseIndex, 1 << level, rowStride, planeStride))
+        {
+            result = SubtreeResult.Uniform(source[baseIndex]);
+            return true;
+        }
+#endif
+
         var subtreeStart = writer.Position;
         Span<SubtreeResult> children = stackalloc SubtreeResult[8];
         var half = 1 << (level - 1);
@@ -505,6 +520,23 @@ internal static class OctreeCodec
         result = SubtreeResult.Node(nodeOffset);
         return true;
     }
+
+#if NET10_0_OR_GREATER
+    private static bool IsUniformRegion(ReadOnlySpan<uint> source, int start, int size, int rowStride, int planeStride)
+    {
+        var value = source[start];
+        if (size == rowStride)
+            return source.Slice(start, size * size * size).IndexOfAnyExcept(value) < 0;
+        for (var x = 0; x < size; x++)
+        {
+            var plane = start + x * planeStride;
+            for (var y = 0; y < size; y++)
+                if (source.Slice(plane + y * rowStride, size).IndexOfAnyExcept(value) >= 0)
+                    return false;
+        }
+        return true;
+    }
+#endif
 
     private static bool TryValidateNode(
         ReadOnlySpan<byte> body,

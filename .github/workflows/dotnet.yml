@@ -22,7 +22,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
+            11.0.100-preview.7.26381.103
 
       - name: Restore
         run: dotnet restore src/Tedd.Octree.sln
@@ -46,7 +49,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.100-preview.7.26381.103
 
       - name: Validate tag
         shell: pwsh
