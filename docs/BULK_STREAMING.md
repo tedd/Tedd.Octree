@@ -30,7 +30,7 @@ and Z bit 2 in each interleaved group. Thus `(1,0,0)` maps to 1 and `(0,0,1)` to
 Morton coordinates are relative to the extracted block, not the source world.
 
 ```csharp
-using Tedd.Octree;
+using Tedd.Voxtree;
 
 const int levels = 5;
 const int side = 1 << levels;

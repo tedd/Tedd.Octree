@@ -1,9 +1,9 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
-using Tedd.Octree;
-using Model = global::Tedd.Octree.Octree;
+using Tedd.Voxtree;
+using Model = global::Tedd.Voxtree.Octree;
 
-namespace Tedd.Octree.Benchmark.Tests;
+namespace Tedd.Voxtree.Benchmark.Tests;
 
 /// <summary>Compares independent channels with a packed word using the same voxel attributes.</summary>
 [MemoryDiagnoser]

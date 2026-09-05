@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using Tedd.Octree;
+using Tedd.Voxtree;
 
-namespace Tedd.Octree.Tests;
+namespace Tedd.Voxtree.Tests;
 
 public class WorldTests
 {

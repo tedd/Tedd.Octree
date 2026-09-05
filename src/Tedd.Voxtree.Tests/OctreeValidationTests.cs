@@ -1,7 +1,7 @@
-using OctreeModel = global::Tedd.Octree.Octree;
-using OctreeView = global::Tedd.Octree.OctreeSpan;
+using OctreeModel = global::Tedd.Voxtree.Octree;
+using OctreeView = global::Tedd.Voxtree.OctreeSpan;
 
-namespace Tedd.Octree.Tests;
+namespace Tedd.Voxtree.Tests;
 
 public sealed class OctreeValidationTests
 {

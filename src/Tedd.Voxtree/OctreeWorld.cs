@@ -1,6 +1,6 @@
 using System;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>The knowledge/residency state of a region in a streamed voxel world.</summary>
 public enum OctreeRegionKind

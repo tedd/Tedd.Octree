@@ -1,6 +1,6 @@
 using System;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>An integer voxel box with inclusive minima and exclusive maxima.</summary>
 public readonly struct VoxelBox

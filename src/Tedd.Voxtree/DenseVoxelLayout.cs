@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>The order of voxels within each dense channel.</summary>
 public enum DenseVoxelLayout

@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace Tedd.Octree.Benchmark.Archive.V1.Legacy;
+namespace Tedd.Voxtree.Benchmark.Archive.V1.Legacy;
 
 // Local equivalents of the Tedd.BitUtils 1.0.5 and Tedd.SpanUtils 1.0.8
 // operations used by the implementation archived from commit 3ac31f8.

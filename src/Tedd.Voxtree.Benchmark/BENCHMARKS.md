@@ -102,16 +102,16 @@ The modern uniform-region scan changes the trade-offs substantially:
 
 Run from the repository root:
 
-    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --list flat
+    dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --list flat
 
 Run the complete matrix:
 
-    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*"
+    dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter "*"
 
 Run one suite:
 
-    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*BuildOctrees*"
-    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*AccessOctrees*"
+    dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter "*BuildOctrees*"
+    dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter "*AccessOctrees*"
 
 ## Spatial and channel hypotheses
 
@@ -153,8 +153,8 @@ world, and small runtime-to-runtime differences require longer confirmation.
 
 Run the spatial suites separately on each runtime:
 
-    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter "*Spatial*" --job short
-    dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter "*Spatial*" --job short
+    dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter "*Spatial*" --job short
+    dotnet run -c Release -f net11.0 --project src/Tedd.Voxtree.Benchmark -- --filter "*Spatial*" --job short
 
 SpatialSearch compares 16-cubed box counting and radius-8 nearest searches with
 equivalent point-query loops on a 32-cubed chunk. Empty, terrain, sparse, and
@@ -240,8 +240,8 @@ chunk payloads. This separates world lookup cost from chunk generation cost.
 layouts, including API validation and output writes. Its root-level fill path
 does not enumerate voxels or calculate Morton indices.
 
-    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
-    dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
+    dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*Bulk*' --job short
+    dotnet run -c Release -f net11.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*Bulk*' --job short
 
 Use complete reports and longer isolated confirmation runs for capacity or
 deployment decisions. Morton input/output semantics use the package's actual

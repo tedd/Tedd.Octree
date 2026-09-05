@@ -1,8 +1,8 @@
 using BenchmarkDotNet.Attributes;
-using Tedd.Octree;
-using Model = global::Tedd.Octree.Octree;
+using Tedd.Voxtree;
+using Model = global::Tedd.Voxtree.Octree;
 
-namespace Tedd.Octree.Benchmark.Tests;
+namespace Tedd.Voxtree.Benchmark.Tests;
 
 /// <summary>A single 2-by-2 support-footprint check per entity step, including cache movement.</summary>
 [MemoryDiagnoser]

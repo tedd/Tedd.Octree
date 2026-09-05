@@ -1,7 +1,7 @@
 using BenchmarkDotNet.Attributes;
-using Tedd.Octree;
+using Tedd.Voxtree;
 
-namespace Tedd.Octree.Benchmark.Tests;
+namespace Tedd.Voxtree.Benchmark.Tests;
 
 [MemoryDiagnoser]
 public class BulkUniform

@@ -2,7 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>An immutable multi-channel chunk whose channels share one depth and coordinate system.</summary>
 /// <remarks>Encoded channel memory is borrowed and must remain alive and immutable. Dense factories own their result arrays.</remarks>

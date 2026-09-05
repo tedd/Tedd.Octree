@@ -1,6 +1,6 @@
 using BenchmarkDotNet.Running;
 
-namespace Tedd.Octree.Benchmark;
+namespace Tedd.Voxtree.Benchmark;
 
 internal static class Program
 {

@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>An allocation-free equality or inequality filter over selected value bits.</summary>
 /// <remarks>The default filter matches all values. No delegate or boxing is required.</remarks>

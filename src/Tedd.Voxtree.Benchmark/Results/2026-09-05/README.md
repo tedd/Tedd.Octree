@@ -15,9 +15,9 @@ spatial suites do not measure `OctreeSpan.Any` and are unaffected by this branch
 Commands from the repository root:
 
 ```shell
-dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*Spatial*' --job short
-dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter '*Spatial*' --job short
-dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*BuildOctrees*Levels: 5*' --job short
+dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*Spatial*' --job short
+dotnet run -c Release -f net11.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*Spatial*' --job short
+dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*BuildOctrees*Levels: 5*' --job short
 ```
 
 Build/lookup suites retain the archived v1 implementation as their baseline.

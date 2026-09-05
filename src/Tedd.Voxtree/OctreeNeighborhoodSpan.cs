@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>A zero-allocation sliding voxel cache over caller-provided uint storage.</summary>
 /// <remarks>

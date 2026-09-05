@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 public sealed partial class OctreeWorld
 {

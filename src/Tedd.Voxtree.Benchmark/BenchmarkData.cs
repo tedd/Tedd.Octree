@@ -1,4 +1,4 @@
-namespace Tedd.Octree.Benchmark;
+namespace Tedd.Voxtree.Benchmark;
 
 public enum DataPattern
 {

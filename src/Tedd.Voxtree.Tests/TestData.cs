@@ -1,4 +1,4 @@
-namespace Tedd.Octree.Tests;
+namespace Tedd.Voxtree.Tests;
 
 internal static class TestData
 {

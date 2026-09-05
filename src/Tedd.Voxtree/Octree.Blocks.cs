@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 public sealed partial class Octree
 {

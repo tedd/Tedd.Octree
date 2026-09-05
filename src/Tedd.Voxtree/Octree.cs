@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>
 /// Owns the compact, immutable encoding of a cubic <see cref="uint"/> voxel volume.

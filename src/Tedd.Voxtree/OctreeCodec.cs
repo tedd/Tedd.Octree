@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 internal static class OctreeCodec
 {

@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
-using Tedd.Octree;
-using Model = global::Tedd.Octree.Octree;
+using Tedd.Voxtree;
+using Model = global::Tedd.Voxtree.Octree;
 
-namespace Tedd.Octree.Tests;
+namespace Tedd.Voxtree.Tests;
 
 public class NeighborhoodCacheTests
 {

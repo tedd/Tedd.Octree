@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Tedd.Octree are documented here.
+All notable changes to Tedd.Voxtree are documented here.
 
 ## [2.0.0] - 2026-09-05
 
@@ -48,7 +48,7 @@ All notable changes to Tedd.Octree are documented here.
 - Owned building reuses the sizing pass's terminal storage decision, avoiding a second source traversal for uniform and dense encodings.
 - Encodings automatically fall back to a direct little-endian dense payload when the tree form would not be smaller, capping capacity at `2 + (4 * Count)` bytes.
 - Owned lookup dispatches directly to the validated encoding, keeping the successful hot path allocation-free and avoiding repeated view construction.
-- The benchmark project archives the version 1 implementation as `Tedd.Octree.Benchmark.Archive.V1.OctreeV1` and uses it as the labeled `V1` baseline.
+- The benchmark project archives the version 1 implementation as `Tedd.Voxtree.Benchmark.Archive.V1.OctreeV1` and uses it as the labeled `V1` baseline.
 - Throughput, latency, locality, and compression advantages remain benchmark hypotheses until supported by current results for a specified runtime and machine.
 
 ### Concurrency

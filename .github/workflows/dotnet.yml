@@ -28,13 +28,13 @@ jobs:
             11.0.100-preview.7.26381.103
 
       - name: Restore
-        run: dotnet restore src/Tedd.Octree.sln
+        run: dotnet restore src/Tedd.Voxtree.sln
 
       - name: Build
-        run: dotnet build src/Tedd.Octree.sln --no-restore --configuration Release
+        run: dotnet build src/Tedd.Voxtree.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test src/Tedd.Octree.sln --no-build --configuration Release --verbosity normal
+        run: dotnet test src/Tedd.Voxtree.sln --no-build --configuration Release --verbosity normal
 
   publish:
     needs: build-test
@@ -56,14 +56,14 @@ jobs:
       - name: Validate tag
         shell: pwsh
         run: |
-          $version = (dotnet msbuild src/Tedd.Octree/Tedd.Octree.csproj -nologo -getProperty:Version).Trim()
+          $version = (dotnet msbuild src/Tedd.Voxtree/Tedd.Voxtree.csproj -nologo -getProperty:Version).Trim()
           $tag = "${{ github.ref_name }}"
           if ($tag -ne "v$version") {
             throw "Tag '$tag' does not match package version '$version'."
           }
 
       - name: Pack
-        run: dotnet pack src/Tedd.Octree/Tedd.Octree.csproj --configuration Release --output artifacts/packages
+        run: dotnet pack src/Tedd.Voxtree/Tedd.Voxtree.csproj --configuration Release --output artifacts/packages
 
       - name: Publish to NuGet.org
         shell: pwsh

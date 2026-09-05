@@ -1,12 +1,12 @@
 #nullable disable
 
 using System.Diagnostics;
-using Tedd.Octree.Benchmark.Archive.V1.Legacy;
+using Tedd.Voxtree.Benchmark.Archive.V1.Legacy;
 using SType = System.UInt32;
 
-namespace Tedd.Octree.Benchmark.Archive.V1;
+namespace Tedd.Voxtree.Benchmark.Archive.V1;
 
-// Archived from src/Tedd.Octree/Octree.cs at commit 3ac31f8.
+// Archived from src/Tedd.Voxtree/Octree.cs at commit 3ac31f8.
 // Only the namespace/type visibility and helper namespace were adapted for isolation.
 // The v1 tree construction, byte layout, and lookup algorithms are unchanged.
 internal class OctreeV1

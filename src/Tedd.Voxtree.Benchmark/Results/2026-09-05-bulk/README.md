@@ -77,9 +77,9 @@ runs are not evidence for a general runtime ranking.
 Run from the repository root, one runtime at a time:
 
 ```shell
-dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
-dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter '*BulkBlocks*Levels: 5*' '*BulkWorld*WorldLevels: 10, ChunkLevels: 5*' '*BulkUniform*' --job short
-dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*BuildOctrees*Levels: 5*' '*SpatialSupport*' --job short
+dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*Bulk*' --job short
+dotnet run -c Release -f net11.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*BulkBlocks*Levels: 5*' '*BulkWorld*WorldLevels: 10, ChunkLevels: 5*' '*BulkUniform*' --job short
+dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*BuildOctrees*Levels: 5*' '*SpatialSupport*' --job short
 ```
 
 The final .NET 10 bulk rerun used the same 22-case filter as the .NET 11 command.

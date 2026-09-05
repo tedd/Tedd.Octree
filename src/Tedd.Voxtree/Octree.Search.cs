@@ -1,6 +1,6 @@
 using System;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 public sealed partial class Octree
 {

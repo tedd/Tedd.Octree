@@ -1,9 +1,9 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
-using Tedd.Octree;
-using Model = global::Tedd.Octree.Octree;
+using Tedd.Voxtree;
+using Model = global::Tedd.Voxtree.Octree;
 
-namespace Tedd.Octree.Benchmark.Tests;
+namespace Tedd.Voxtree.Benchmark.Tests;
 
 public enum SpatialPattern { Empty, Terrain, Sparse, Dense }
 

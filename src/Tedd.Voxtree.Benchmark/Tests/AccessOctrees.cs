@@ -1,9 +1,9 @@
 using BenchmarkDotNet.Attributes;
-using Tedd.Octree.Benchmark.Archive.V1;
-using OptimizedOctree = global::Tedd.Octree.Octree;
-using OptimizedOctreeSpan = global::Tedd.Octree.OctreeSpan;
+using Tedd.Voxtree.Benchmark.Archive.V1;
+using OptimizedOctree = global::Tedd.Voxtree.Octree;
+using OptimizedOctreeSpan = global::Tedd.Voxtree.OctreeSpan;
 
-namespace Tedd.Octree.Benchmark.Tests;
+namespace Tedd.Voxtree.Benchmark.Tests;
 
 [MemoryDiagnoser]
 public class AccessOctrees

@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>A persistent sliding neighborhood cache for entities or simulation workers.</summary>
 /// <remarks>

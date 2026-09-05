@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Tedd.Octree\Tedd.Octree.csproj" />
+    <ProjectReference Include="..\Tedd.Voxtree\Tedd.Voxtree.csproj" />
   </ItemGroup>
 
 </Project>

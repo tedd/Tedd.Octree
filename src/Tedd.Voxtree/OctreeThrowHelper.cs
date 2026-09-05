@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 internal static class OctreeThrowHelper
 {

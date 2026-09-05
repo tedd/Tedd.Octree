@@ -1,6 +1,6 @@
-using Tedd.Octree;
+using Tedd.Voxtree;
 
-namespace Tedd.Octree.Tests;
+namespace Tedd.Voxtree.Tests;
 
 // Executable counterpart of docs/BULK_STREAMING.md. Keep examples synchronized.
 public class DocumentationExamplesTests

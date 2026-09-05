@@ -1,6 +1,6 @@
-# Tedd.Octree
+# Tedd.Voxtree
 
-Tedd.Octree is a compact, read-only octree for `UInt32` voxel data. Version 2 stores the tree in one versioned, contiguous byte encoding and exposes two views over it:
+Tedd.Voxtree is a compact, read-only octree for `UInt32` voxel data. Version 2 stores the tree in one versioned, contiguous byte encoding and exposes two views over it:
 
 - `Octree`, a sealed owned wrapper.
 - `OctreeSpan`, a `readonly ref struct` over caller-owned encoded memory.
@@ -10,7 +10,7 @@ sparse, mutable outer hierarchy for streaming chunks into worlds larger than a
 single dense buffer, preserving the distinction between unloaded data and known
 air. Linear and Morton-ordered dense blocks can be extracted, edited, rebuilt,
 saved, and reloaded. See the complete
-[bulk editing and streaming guide](https://github.com/tedd/Tedd.Octree/blob/v2.0.0/docs/BULK_STREAMING.md)
+[bulk editing and streaming guide](https://github.com/tedd/Tedd.Voxtree/blob/v2.0.0/docs/BULK_STREAMING.md)
 for examples of every added API.
 
 For successful, valid-input operations, the caller-buffer build path and `OctreeSpan` lookup path perform no managed heap allocations. The owned build path allocates one final `byte[]` for the encoded tree. Error paths may allocate exception objects. Performance beyond these steady-state allocation contracts remains a hypothesis until measured on the target runtime and hardware.
@@ -26,13 +26,13 @@ The API and encoded byte format are identical across targets; runtime-specific
 performance must be measured on the deployment hardware.
 
 ```shell
-dotnet add package Tedd.Octree --version 2.0.0
+dotnet add package Tedd.Voxtree --version 2.0.0
 ```
 
 Or add the package reference directly:
 
 ```xml
-<PackageReference Include="Tedd.Octree" Version="2.0.0" />
+<PackageReference Include="Tedd.Voxtree" Version="2.0.0" />
 ```
 
 ## Data model
@@ -69,7 +69,7 @@ index = (x * side * side) + (y * side) + z
 Use `Octree` when the tree must outlive an input buffer, cross an `async` boundary, or be retained in a heap object:
 
 ```csharp
-using Tedd.Octree;
+using Tedd.Voxtree;
 
 const int levels = 2;
 const int side = 1 << levels;
@@ -103,7 +103,7 @@ tree.Build(values);
 Use the static sizing/building API with `OctreeSpan` when the storage lifetime is controlled by the caller. The following path uses stack storage throughout:
 
 ```csharp
-using Tedd.Octree;
+using Tedd.Voxtree;
 
 const int levels = 2;
 const int side = 1 << levels;
@@ -346,12 +346,12 @@ The benchmark suite is intended to test these hypotheses rather than presuppose 
 4. Homogeneous and spatially clustered inputs compress substantially below dense `UInt32[]` storage.
 5. Highly heterogeneous inputs select the dense fallback, trading two header bytes for direct indexing rather than tree traversal.
 
-Results vary with data distribution, level count, JIT, runtime, CPU, and access pattern. Treat a claim as measured only when accompanied by BenchmarkDotNet output for the relevant source revision and environment. Historical reports directly under `src/Tedd.Octree.Benchmark/Results` predate v2; `2026-09-05` records the spatial/channel milestone and `2026-09-05-bulk` records the subsequent dense-block/world extension.
+Results vary with data distribution, level count, JIT, runtime, CPU, and access pattern. Treat a claim as measured only when accompanied by BenchmarkDotNet output for the relevant source revision and environment. Historical reports directly under `src/Tedd.Voxtree.Benchmark/Results` predate v2; `2026-09-05` records the spatial/channel milestone and `2026-09-05-bulk` records the subsequent dense-block/world extension.
 
 The recorded .NET 8 reference screening run confirmed 0 B caller-span builds and
 lookups. Random level-5 lookup measured approximately 7.5 times faster than v1,
 while compressed-tree lookup ranged from near parity to slower than v1. See
-[`BENCHMARKS.md`](https://github.com/tedd/Tedd.Octree/blob/v2.0.0/src/Tedd.Octree.Benchmark/BENCHMARKS.md)
+[`BENCHMARKS.md`](https://github.com/tedd/Tedd.Voxtree/blob/v2.0.0/src/Tedd.Voxtree.Benchmark/BENCHMARKS.md)
 for the environment, method, and qualified results.
 
 ## Build, test, and benchmark
@@ -359,16 +359,16 @@ for the environment, method, and qualified results.
 Run the test suite:
 
 ```shell
-dotnet test src/Tedd.Octree.sln -c Release
+dotnet test src/Tedd.Voxtree.sln -c Release
 ```
 
 Run all BenchmarkDotNet cases:
 
 ```shell
-dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*'
+dotnet run -c Release -f net10.0 --project src/Tedd.Voxtree.Benchmark -- --filter '*'
 ```
 
-The benchmark project retains the version 1 implementation as the internal `Tedd.Octree.Benchmark.Archive.V1.OctreeV1` baseline. It is test infrastructure, not supported public API. Benchmark names and categories label that implementation as `V1` so current, archived, span-backed, and dense-array results remain distinguishable.
+The benchmark project retains the version 1 implementation as the internal `Tedd.Voxtree.Benchmark.Archive.V1.OctreeV1` baseline. It is test infrastructure, not supported public API. Benchmark names and categories label that implementation as `V1` so current, archived, span-backed, and dense-array results remain distinguishable.
 
 Use a Release build, close competing workloads, and compare allocation columns as well as elapsed time. Commit benchmark artifacts only with their runtime, operating system, CPU, and BenchmarkDotNet metadata intact.
 
@@ -385,4 +385,4 @@ See [CHANGELOG.md](CHANGELOG.md) for the release summary.
 
 ## License
 
-Tedd.Octree is licensed under the GNU Lesser General Public License version 2.1. See [LICENSE](LICENSE).
+Tedd.Voxtree is licensed under the GNU Lesser General Public License version 2.1. See [LICENSE](LICENSE).

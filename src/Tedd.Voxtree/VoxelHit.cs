@@ -1,4 +1,4 @@
-namespace Tedd.Octree;
+namespace Tedd.Voxtree;
 
 /// <summary>A voxel coordinate and its channel value.</summary>
 public readonly struct VoxelHit
