@@ -53,8 +53,12 @@ All notable changes to Tedd.Voxtree are documented here.
 
 ### Concurrency
 
-- Concurrent reads are supported after build when the encoded storage remains unchanged.
-- Concurrent rebuild/read and rebuild/rebuild operations are not supported.
+- World reads use shared locks; mutations use exclusive locks. Complete queries/copies and mutable metadata are synchronized.
+- Added allocation-free `BeginReadBatch()` / `BeginWriteBatch()` scopes after lock warmup, with compatible nesting, thread affinity, and exception-safe release. Batches provide exclusion without rollback; read-to-write upgrades are rejected.
+- Worlds implement `IDisposable` to release synchronization resources after all workers have stopped.
+- Owned `Octree` rebuilds atomically publish immutable encodings; concurrent rebuild/read and rebuild/rebuild operations are supported with stable input buffers. Captured spans retain their original encoding.
+- Immutable chunks remain usable after world replacement/eviction; borrowed backing-memory lifetime remains the caller's responsibility. Mutable dense views and neighborhood caches require worker-exclusive storage.
+- Added concurrency stress tests, batching benchmarks, and dirty-channel coalescing/publication guidance.
 
 ### License
 

@@ -334,7 +334,51 @@ Version 2 encodings are not compatible with version 1. Validate persisted data b
 
 ## Concurrency
 
-Concurrent reads are safe after a successful build when the encoded bytes are not mutated. Do not call `Octree.Build` concurrently with reads or another build. For `OctreeSpan`, synchronization and backing-buffer lifetime remain the caller's responsibility.
+`OctreeWorld` synchronizes reads with a shared `ReaderWriterLockSlim` and writes
+with an exclusive lock. Individual queries, including multi-channel extraction,
+see one consistent world state. Use batches for consistency across several calls
+and to amortize lock acquisition:
+
+```csharp
+using (world.BeginReadBatch())
+{
+    uint material = world.Get(0, x, y, z);
+    uint collision = world.Get(1, x, y, z);
+    // Both values come from the same world state; other readers can proceed.
+}
+
+// Build immutable replacement chunks before entering the write batch.
+using (world.BeginWriteBatch())
+{
+    world.LoadChunk(0, 0, 0, firstReplacement);
+    world.LoadChunk(1, 0, 0, secondReplacement);
+    // Reads are also permitted here. Other threads wait until disposal.
+}
+```
+
+Batches are synchronous, stack-only scopes. Dispose on the creating thread in
+reverse acquisition order; do not copy them or hold them across `await`.
+Compatible batches may nest. Writing from a read batch throws
+`LockRecursionException`; begin a write batch for read-modify-write work.
+Successful changes persist if a later operation fails: batches provide exclusion,
+not rollback. `Revision` still advances per successful change. Keep batches short.
+Dispose a world after all its workers and batches have finished.
+
+`Octree` uses lock-free immutable publication: concurrent builds and reads are
+safe when each build source is stable. The last build to publish wins. Capture
+`AsSpan()` once for several reads of the same encoding. `OctreeChunk` is an
+immutable multi-channel snapshot; a chunk returned by `TryGetChunk` remains usable
+after replacement or eviction. Borrowed bytes and caller-owned workspace must
+retain their documented immutability, exclusivity, and lifetime. Mutable dense
+views and neighborhood caches remain per-worker resources.
+
+The [synchronization benchmark](src/Tedd.Voxtree.Benchmark/Results/2026-09-05-threading/README.md)
+measured 26.1 ns per individual world read versus 19.9 ns in 1,024-operation read
+batches on .NET 10 / Ryzen 9 5950X, with zero warm-path allocation. These are
+uncontended measurements; batch size and writer latency remain workload-dependent.
+
+For dirty-block coalescing and publication scheduling, see
+[threading and deferred updates](docs/BULK_STREAMING.md#threading-and-deferred-updates).
 
 ## Performance hypotheses
 

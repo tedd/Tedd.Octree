@@ -13,6 +13,7 @@ public sealed partial class OctreeWorld
     /// <summary>Reads a channel voxel; false means outside the world or unloaded. Known-empty regions return zero.</summary>
     public bool TryGet(int channel, int x, int y, int z, out uint value)
     {
+        using var scope = ReadLock();
         ValidateChannel(channel); value = 0;
         if ((uint)x >= (uint)SideLength || (uint)y >= (uint)SideLength || (uint)z >= (uint)SideLength) return false;
         var link = Find(x, y, z, out _);
@@ -33,6 +34,7 @@ public sealed partial class OctreeWorld
     /// <remarks>A known match is conclusive even if other cells are unloaded. A false match result requires all intersecting data to be known.</remarks>
     public bool TryAny(VoxelBox box, int channel, VoxelFilter filter, out bool any)
     {
+        using var scope = ReadLock();
         ValidateBox(box); ValidateChannel(channel);
         var state = new WorldQuery { Channel = channel, Filter = filter };
         Visit(_root, Levels, 0, 0, 0, box, ref state);
@@ -49,6 +51,7 @@ public sealed partial class OctreeWorld
     /// <summary>Counts matching voxels in Int64. False means the returned count excludes unknown cells.</summary>
     public bool TryCountMatches(VoxelBox box, int channel, VoxelFilter filter, out long count)
     {
+        using var scope = ReadLock();
         ValidateBox(box); ValidateChannel(channel);
         var state = new WorldQuery { Channel = channel, Filter = filter, Counting = true };
         Visit(_root, Levels, 0, 0, 0, box, ref state);
@@ -99,6 +102,7 @@ public sealed partial class OctreeWorld
     /// <remarks>Returned regions are not clipped and may be larger than the query. Uniform outer levels are never expanded into individual chunks.</remarks>
     public bool QueryRegions(VoxelBox box, Span<OctreeWorldRegion> destination, out int written)
     {
+        using var scope = ReadLock();
         ValidateBox(box); written = 0;
         return Collect(_root, Levels, 0, 0, 0, box, destination, ref written);
     }
@@ -121,6 +125,7 @@ public sealed partial class OctreeWorld
     /// <remarks>Levels is 0..9; destination is channel-major. Any unloaded cell or overlap is rejected before writes.</remarks>
     public void CopyBlockTo(int x, int y, int z, int levels, Span<uint> destination, DenseVoxelLayout layout = DenseVoxelLayout.Linear)
     {
+        using var scope = ReadLock();
         var box = DenseBox(x, y, z, levels, layout);
         var count = OctreeCodec.GetVoxelCount(levels);
         PrepareCopy(box, destination, 0, ChannelCount, checked(count * ChannelCount));
@@ -130,6 +135,7 @@ public sealed partial class OctreeWorld
     /// <summary>Extracts one selected channel in linear or Morton order, crossing chunk boundaries.</summary>
     public void CopyChannelBlockTo(int channel, int x, int y, int z, int levels, Span<uint> destination, DenseVoxelLayout layout = DenseVoxelLayout.Linear)
     {
+        using var scope = ReadLock();
         ValidateChannel(channel); var box = DenseBox(x, y, z, levels, layout);
         var count = OctreeCodec.GetVoxelCount(levels);
         PrepareCopy(box, destination, channel, 1, count);
@@ -138,6 +144,7 @@ public sealed partial class OctreeWorld
     /// <summary>Extracts an arbitrary box in one channel into packed linear X/Y/Z-major storage.</summary>
     public void CopyRegionTo(int channel, VoxelBox box, Span<uint> destination)
     {
+        using var scope = ReadLock();
         ValidateChannel(channel); ValidateBox(box); var count = box.Count;
         PrepareCopy(box, destination, channel, 1, count);
         CopyChannel(box, channel, destination[..count], DenseVoxelLayout.Linear);

@@ -315,10 +315,13 @@ conservative and may invalidate a cache after an unrelated edit; applications
 can track per-chunk revisions. Chunk-local caches must not be queried outside
 their bounds. Use world queries/extraction or multiple chunk caches at borders.
 
-No world/chunk cache or mutable world operation is thread-safe. Concurrent reads
-are permitted while all referenced storage remains immutable and no world
-mutation occurs. Coordinate publication, lifetime, and multi-channel/multi-chunk
-transaction requirements belong to the application.
+World operations acquire shared read or exclusive write locks automatically.
+Mutable neighborhood caches and dense working buffers remain exclusive to their
+worker. A retained chunk snapshot can be read without world locks, including
+after replacement or eviction, provided its borrowed backing storage is still
+alive and immutable. A world lock does not protect external buffer mutation.
+Use a read batch when pairing a chunk lookup with `Revision` or when sizing a
+manifest from `BranchCount` before enumeration.
 
 ## Allocation contracts
 
@@ -330,11 +333,91 @@ transaction requirements belong to the application.
 | `WithDenseChannel` | One final channel array, descriptors, wrapper |
 | Chunk constructor / `FromEncoded` | Descriptors and wrapper; payloads borrowed |
 | `CopyEncodedTo` | 0 |
-| World construction | Workspace/slot arrays and wrapper; caller-memory overload allocates only wrapper |
-| Load/evict/import, point/area/count queries, region enumeration | 0 after provisioning |
-| World dense extraction | 0 after destination provisioning |
+| World construction | Workspace/slot arrays, wrapper, and synchronization object; caller-memory overload omits arrays |
+| Load/evict/import, point/area/count queries, region enumeration | 0 after provisioning and lock warmup on each worker |
+| World dense extraction | 0 after destination provisioning and lock warmup |
+| Read/write batch scopes | 0 after lock warmup; no per-scope heap object |
 
+First use on a worker may allocate lock bookkeeping; contention may allocate wait
+handles. Dispose worlds after stopping their workers to release lock resources.
 Exception paths may allocate. BenchmarkDotNet suites `BulkBlocks` and `BulkWorld`
 test steady-state paths and exclude setup allocations. See the benchmark guide
 for measured results and the distinction between dense-buffer cost, encoded
 payload cost, index capacity, and resident working set.
+
+
+## Threading and deferred updates
+
+The world uses one reader/writer lock per instance. Concurrent readers share the
+lock; load, replace, empty, and unload operations acquire it exclusively. The
+complete region traversal or dense copy stays under one read lock, including
+validation and all channels. Counts and `Revision` are also synchronized.
+
+```csharp
+using (world.BeginReadBatch())
+{
+    ulong revision = world.Revision;
+    bool resident = world.TryGetChunk(0, 0, 0, out var snapshot);
+    // Use revision and snapshot together here, or retain both for a worker cache.
+}
+
+// Encode independently owned, stable dense input before taking the world lock.
+var replacement = OctreeChunk.FromDense(5, 4, denseValues);
+using (world.BeginWriteBatch())
+{
+    world.LoadChunk(0, 0, 0, replacement);
+    world.TrySetEmptyRegion(32, 0, 0, 5);
+}
+```
+
+Calls inside a batch reuse its held lock. Read batches may nest in read or write
+batches; write batches may nest in write batches. An ordinary read batch cannot
+upgrade to write: it throws `LockRecursionException` immediately. This follows
+[ReaderWriterLockSlim's threading rules](https://learn.microsoft.com/en-us/dotnet/fundamentals/runtime-libraries/system-threading-readerwriterlockslim).
+Use a write batch from the outset for atomic read-modify-write operations.
+Scopes must be disposed in reverse acquisition order on their creating thread,
+and must not be copied or cross `await`. Acquire multiple worlds in a consistent
+application-defined order if an operation needs several world locks.
+
+Batch writes become observable to other threads on disposal. Batches do not
+provide rollback or reserve capacity for future calls: if the third load fails,
+the first two remain applied. Every actual change advances `Revision`, even
+inside a batch; no-op loads and failed capacity checks do not. Capturing several
+chunks in a short read batch then querying those immutable snapshots outside it
+can reduce writer blocking when a stable historical view is sufficient.
+
+### Should dirty blocks be queued?
+
+Coalescing **dense voxel edits before rebuilding a changed channel** is the
+likely useful optimization for this implementation. A resident nonempty chunk
+replacement already performs an outer-path lookup, swaps its immutable payload
+reference, and advances the revision. It does not rebuild the outer tree. Branch
+splitting/collapse occurs when residency or empty/unloaded state changes. Merely
+queuing already-encoded replacements primarily amortizes locking and can discard
+superseded versions; it does not save encoding that already happened.
+
+A suitable application workflow is:
+
+1. Give a worker exclusive ownership of each mutable dirty chunk, and coalesce
+   repeated edits by chunk/channel. Keep actively simulated chunks dense.
+2. At a simulation tick or bounded flush, encode each changed channel once using
+   `WithDenseChannel`, or build a complete `OctreeChunk`. Encode outside world locks
+   from a stable buffer or private snapshot.
+3. Publish completed chunks in a short `BeginWriteBatch()` scope. Check the
+   expected previous chunk identity or an application-owned generation under
+   that same write lock before replacing it. Retry or merge a stale result;
+   otherwise a slow worker can overwrite newer edits or reload an evicted chunk.
+4. Bound pending work and publication batch size. Define backpressure, flush on
+   save/shutdown, and handling of fixed world-capacity failures.
+
+A dedicated maintenance thread is optional. The simulation loop can flush at
+explicit ticks, or existing workers can encode and a designated owner can publish.
+Add background maintenance when measured rebuild time or publication latency
+justifies it. Readers then see the last published state until a flush. Immediate
+read-after-edit semantics would require consulting the dirty working state as
+well, complicating cross-chunk queries and cache invalidation. No background
+queue or delayed visibility is enabled by the library.
+
+`WorldSynchronization` benchmarks individual versus batched reads/writes and
+retained-chunk reads. They measure uncontended costs; use representative worker
+counts, query lengths, and write rates to assess contention and tail latency.

@@ -10,7 +10,9 @@ namespace Tedd.Voxtree;
 /// <remarks>
 /// Use <see cref="OctreeSpan"/> and the caller-buffer build APIs when the operation
 /// must not allocate. An owned build allocates exactly one byte array for the result.
-/// Published data is immutable, so concurrent readers are safe.
+/// Builds atomically publish immutable data, so concurrent reads and builds are safe
+/// when build sources remain stable. The last build to publish wins. Capture AsSpan()
+/// once to read the same snapshot across multiple queries.
 /// </remarks>
 public sealed partial class Octree
 {
@@ -148,7 +150,7 @@ public sealed partial class Octree
                    .TryCopyTo(destination);
     }
 
-    /// <summary>Creates an allocation-free, stack-only view over the owned encoding.</summary>
+    /// <summary>Captures an allocation-free, stack-only snapshot that remains valid across subsequent builds.</summary>
     /// <exception cref="InvalidOperationException">The tree has not been built.</exception>
     public OctreeSpan AsSpan()
     {

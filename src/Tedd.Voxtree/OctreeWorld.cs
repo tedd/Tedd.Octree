@@ -47,8 +47,9 @@ public readonly struct OctreeWorldRegion
 
 /// <summary>A sparse, fixed-capacity outer octree over independently loadable multi-channel chunks.</summary>
 /// <remarks>
-/// Empty and unloaded regions collapse independently. Load/unload/query operations allocate no managed
-/// memory after provisioning. Not thread-safe; synchronize mutations and do not mutate retained chunk bytes.
+/// Empty and unloaded regions collapse independently. Reads use shared locks; mutations use exclusive
+/// locks. Batch scopes amortize locking across calls. Operations allocate no managed memory after
+/// workspace and per-thread lock warmup; contention may allocate wait handles. Do not mutate retained chunk bytes.
 /// Outer depth is independent of the bounded dense/encoded chunk depth.
 /// </remarks>
 public sealed partial class OctreeWorld
@@ -60,6 +61,8 @@ public sealed partial class OctreeWorld
     private readonly Memory<OctreeChunk?> _chunks;
     // Links: 0 unknown, -1 empty, -(slot+2) resident, positive = eight-child offset + 1.
     private int _root, _nextNode, _freeBranch, _freeBranchCount, _freeSlot;
+    private int _residentChunkCount, _branchCount;
+    private ulong _revision;
 
     /// <summary>Provisions a world with fixed resident-chunk and branch capacities.</summary>
     /// <param name="levels">World depth, chunkLevels..20. Ten represents a 1024-cubed world.</param>
@@ -125,11 +128,11 @@ public sealed partial class OctreeWorld
     /// <summary>Maximum eight-child branches.</summary>
     public int BranchCapacity => _nodes.Length / 8;
     /// <summary>Number of retained nonempty chunk payloads.</summary>
-    public int ResidentChunkCount { get; private set; }
+    public int ResidentChunkCount { get { using var scope = ReadLock(); return _residentChunkCount; } }
     /// <summary>Number of live branches; collapsed/released branches are reusable.</summary>
-    public int BranchCount { get; private set; }
+    public int BranchCount { get { using var scope = ReadLock(); return _branchCount; } }
     /// <summary>Changes after successful mutations. Useful for invalidating application-level caches.</summary>
-    public ulong Revision { get; private set; }
+    public ulong Revision { get { using var scope = ReadLock(); return _revision; } }
     private int AvailableBranches => (_nodes.Length - _nextNode) / 8 + _freeBranchCount;
 
     private void ValidatePoint(int x, int y, int z)
@@ -166,6 +169,7 @@ public sealed partial class OctreeWorld
     /// <summary>Gets the stored region containing a voxel, including its unloaded/empty state.</summary>
     public OctreeWorldRegion GetRegion(int x, int y, int z)
     {
+        using var scope = ReadLock();
         ValidatePoint(x, y, z); var link = Find(x, y, z, out var levels);
         return Region(link, (x >> levels) << levels, (y >> levels) << levels, (z >> levels) << levels, levels);
     }
@@ -175,6 +179,7 @@ public sealed partial class OctreeWorld
     /// <summary>Gets a resident payload by chunk coordinates; false also covers known-empty chunks.</summary>
     public bool TryGetChunk(int chunkX, int chunkY, int chunkZ, out OctreeChunk? chunk)
     {
+        using var scope = ReadLock();
         ChunkOrigin(chunkX, chunkY, chunkZ, out var x, out var y, out var z);
         var link = Find(x, y, z, out _);
         chunk = link < -1 ? _chunks.Span[-link - 2] : null;
@@ -183,6 +188,7 @@ public sealed partial class OctreeWorld
     /// <summary>Loads or replaces one chunk without allocating. False means insufficient fixed capacity; no state is changed.</summary>
     public bool TryLoadChunk(int chunkX, int chunkY, int chunkZ, OctreeChunk chunk)
     {
+        using var scope = WriteLock();
         if (chunk is null) throw new ArgumentNullException(nameof(chunk));
         if (chunk.Levels != ChunkLevels || chunk.ChannelCount != ChannelCount) throw new ArgumentException("Chunk schema does not match the world.", nameof(chunk));
         ChunkOrigin(chunkX, chunkY, chunkZ, out var x, out var y, out var z);
@@ -190,13 +196,13 @@ public sealed partial class OctreeWorld
         var old = Find(x, y, z, out _);
         if (old < -1)
         {
-            if (!ReferenceEquals(_chunks.Span[-old - 2], chunk)) { _chunks.Span[-old - 2] = chunk; Revision++; }
+            if (!ReferenceEquals(_chunks.Span[-old - 2], chunk)) { _chunks.Span[-old - 2] = chunk; _revision++; }
             return true;
         }
         if (_freeSlot == _chunks.Length || !CanSet(x, y, z, ChunkLevels, -2)) return false;
         var slot = _freeSlot; _freeSlot = _slotNext.Span[slot];
-        _chunks.Span[slot] = chunk; ResidentChunkCount++;
-        _root = Replace(_root, Levels, x, y, z, ChunkLevels, -slot - 2); Revision++;
+        _chunks.Span[slot] = chunk; _residentChunkCount++;
+        _root = Replace(_root, Levels, x, y, z, ChunkLevels, -slot - 2); _revision++;
         return true;
     }
     /// <summary>Loads a chunk, throwing if fixed capacity is exhausted.</summary>
@@ -205,7 +211,7 @@ public sealed partial class OctreeWorld
         if (!TryLoadChunk(chunkX, chunkY, chunkZ, chunk)) throw new InvalidOperationException("World capacity is exhausted.");
     }
     /// <summary>Imports a stored region, optionally translated, into this larger world without copying its payload.</summary>
-    /// <remarks>Loaded regions must match the destination chunk schema. Empty/unloaded outer regions preserve their depth. Each call is atomic; a sequence of imports is not.</remarks>
+    /// <remarks>Loaded regions must match the destination chunk schema. Empty/unloaded outer regions preserve their depth. Use a write batch to exclude readers across a sequence of imports; failures do not roll back earlier imports.</remarks>
     public bool TryLoadRegion(OctreeWorldRegion region, int offsetX = 0, int offsetY = 0, int offsetZ = 0)
     {
         var x = checked(region.X + offsetX); var y = checked(region.Y + offsetY); var z = checked(region.Z + offsetZ);
@@ -221,11 +227,12 @@ public sealed partial class OctreeWorld
     public bool TryUnloadRegion(int x, int y, int z, int levels) => TrySetRegion(x, y, z, levels, 0);
     private bool TrySetRegion(int x, int y, int z, int levels, int value)
     {
+        using var scope = WriteLock();
         ValidateRegion(x, y, z, levels);
         if (!CanSet(x, y, z, levels, value)) return false;
         var old = Find(x, y, z, out var oldLevels);
         if (oldLevels >= levels && old == value) return true;
-        _root = Replace(_root, Levels, x, y, z, levels, value); Revision++;
+        _root = Replace(_root, Levels, x, y, z, levels, value); _revision++;
         return true;
     }
     private bool CanSet(int x, int y, int z, int target, int value)
@@ -239,12 +246,12 @@ public sealed partial class OctreeWorld
         int link;
         if (_freeBranch != 0) { link = _freeBranch; _freeBranch = _nodes.Span[link - 1]; _freeBranchCount--; }
         else { link = _nextNode + 1; _nextNode += 8; }
-        _nodes.Span.Slice(link - 1, 8).Fill(fill); BranchCount++; return link;
+        _nodes.Span.Slice(link - 1, 8).Fill(fill); _branchCount++; return link;
     }
     private void ReleaseBranch(int link)
     {
         _nodes.Span.Slice(link - 1, 8).Clear(); _nodes.Span[link - 1] = _freeBranch;
-        _freeBranch = link; _freeBranchCount++; BranchCount--;
+        _freeBranch = link; _freeBranchCount++; _branchCount--;
     }
     private void Release(int link)
     {
@@ -256,7 +263,7 @@ public sealed partial class OctreeWorld
         else if (link < -1)
         {
             var slot = -link - 2; _chunks.Span[slot] = null;
-            _slotNext.Span[slot] = _freeSlot; _freeSlot = slot; ResidentChunkCount--;
+            _slotNext.Span[slot] = _freeSlot; _freeSlot = slot; _residentChunkCount--;
         }
     }
     private int Replace(int link, int level, int x, int y, int z, int target, int value)
