@@ -40,10 +40,17 @@ public sealed class OctreeNeighborhoodCache
         if (source is null) throw new ArgumentNullException(nameof(source));
         var snapshot = source.Data;
         if (snapshot.IsEmpty) throw new InvalidOperationException("The source has not been built.");
+        return Update(snapshot, 0, x, y, z);
+    }
+
+    /// <summary>Updates from a borrowed channel encoding; change revision after every in-place rebuild.</summary>
+    /// <remarks>The encoded memory must remain alive and immutable while used by the cache.</remarks>
+    public int Update(ReadOnlyMemory<byte> snapshot, ulong revision, int x, int y, int z)
+    {
         var cache = new OctreeNeighborhoodSpan(_storage.Span, _snapshot.Span, _state);
         try
         {
-            var copied = cache.Update(new OctreeSpan(snapshot.Span), 0, x, y, z);
+            var copied = cache.Update(new OctreeSpan(snapshot.Span), revision, x, y, z);
             _snapshot = snapshot;
             return copied;
         }

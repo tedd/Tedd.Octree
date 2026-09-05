@@ -15,6 +15,11 @@ All notable changes to Tedd.Octree are documented here.
 
 ### Added
 
+- Linear and Tedd.MortonEncoding-ordered dense import/export, unaligned lower-level block extraction, and mutable multi-channel dense span views.
+- Immutable multi-channel chunk snapshots with selective channel rebuilds and versioned, validated chunk packets for save/load.
+- Sparse fixed-capacity outer octrees through depth 20, independently configurable chunk depths, explicit unloaded/known-air states, recyclable branches/payload slots, and zero-allocation streaming operations.
+- Cross-chunk area queries/counts and dense extraction, plus region manifests and translated lower-world imports into larger worlds.
+- Bulk-editing, persistence, ownership, capacity, and streaming examples covering all added APIs.
 - Targets for .NET 11 preview, .NET 10, and .NET Standard 2.1 with equivalent APIs and encoding; cross-target tests run on .NET 11, .NET 10, and .NET 8.
 - Pruned box occupancy/counting, bounded voxel collection, regional decoding, and nearest matching voxel searches.
 - Delegate-free exact, nonzero, and masked value filters.

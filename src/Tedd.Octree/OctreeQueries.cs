@@ -48,6 +48,14 @@ internal static class OctreeQueries
             var cursor = OctreeCodec.HeaderSize;
             if (!OctreeCodec.TryReadVarUInt(data, ref cursor, out var value))
                 throw new FormatException("Malformed uniform value.");
+            if (state.Kind == QueryKind.Copy && state.RingSide == 0 &&
+                state.Box.MinX == state.CopyBounds.MinX && state.Box.MinY == state.CopyBounds.MinY &&
+                state.Box.MinZ == state.CopyBounds.MinZ && state.Box.MaxX == state.CopyBounds.MaxX &&
+                state.Box.MaxY == state.CopyBounds.MaxY && state.Box.MaxZ == state.CopyBounds.MaxZ)
+            {
+                state.Values[..state.Box.Count].Fill(value); // A constant block has the same dense representation in either order.
+                return;
+            }
             state.Accept(state.Box, value);
             return;
         }
@@ -143,6 +151,7 @@ internal static class OctreeQueries
         internal Span<VoxelHit> Hits;
         internal Span<uint> Values;
         internal int RingSide;
+        internal DenseVoxelLayout OutputLayout;
         internal int Count;
         internal bool Done;
         internal bool Truncated;
@@ -161,6 +170,18 @@ internal static class OctreeQueries
         {
             if (Kind == QueryKind.Copy)
             {
+                if (OutputLayout == DenseVoxelLayout.Morton)
+                {
+                    var side = box.MaxX - box.MinX;
+                    var mask = side - 1;
+                    if ((side & mask) == 0 && side == box.MaxY - box.MinY && side == box.MaxZ - box.MinZ &&
+                        (((box.MinX - CopyBounds.MinX) | (box.MinY - CopyBounds.MinY) | (box.MinZ - CopyBounds.MinZ)) & mask) == 0)
+                    {
+                        // An aligned octant is one contiguous Morton interval, including within a larger output block.
+                        Values.Slice(RowOffset(box.MinX, box.MinY, box.MinZ), box.Count).Fill(value);
+                        return;
+                    }
+                }
                 for (var x = box.MinX; x < box.MaxX; x++)
                 for (var y = box.MinY; y < box.MaxY; y++)
                     FillRow(x, y, box.MinZ, box.MaxZ - box.MinZ, value);
@@ -205,6 +226,9 @@ internal static class OctreeQueries
 
         private int RowOffset(int x, int y, int z)
         {
+            if (OutputLayout == DenseVoxelLayout.Morton)
+                return DenseVoxel.Index(x - CopyBounds.MinX, y - CopyBounds.MinY, z - CopyBounds.MinZ,
+                    CopyBounds.MaxX - CopyBounds.MinX, OutputLayout);
             if (RingSide != 0)
             {
                 var mask = RingSide - 1;
@@ -216,6 +240,11 @@ internal static class OctreeQueries
 
         private void FillRow(int x, int y, int z, int count, uint value)
         {
+            if (OutputLayout == DenseVoxelLayout.Morton)
+            {
+                for (var i = 0; i < count; i++) Values[RowOffset(x, y, z + i)] = value;
+                return;
+            }
             var first = RingSide == 0 ? count : Math.Min(count, RingSide - (z & (RingSide - 1)));
             Values.Slice(RowOffset(x, y, z), first).Fill(value);
             if (first != count)
@@ -224,6 +253,11 @@ internal static class OctreeQueries
 
         internal void CopyRow(int x, int y, int z, ReadOnlySpan<uint> row)
         {
+            if (OutputLayout == DenseVoxelLayout.Morton)
+            {
+                for (var i = 0; i < row.Length; i++) Values[RowOffset(x, y, z + i)] = row[i];
+                return;
+            }
             var first = RingSide == 0 ? row.Length : Math.Min(row.Length, RingSide - (z & (RingSide - 1)));
             row[..first].CopyTo(Values.Slice(RowOffset(x, y, z), first));
             if (first != row.Length)

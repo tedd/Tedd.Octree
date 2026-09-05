@@ -1,7 +1,8 @@
 # v2 reference measurements
 
 These are BenchmarkDotNet ShortRun screening results collected on September 5,
-2026, using the v2.0.0 release source. Each report retains the runtime, SDK,
+2026, using the spatial-query milestone at commit ce6713f, before the later
+bulk/streaming extension. Each report retains the runtime, SDK,
 hardware, uncertainty, and allocation columns. A dash in Allocated means no
 measured managed allocation, not missing data.
 

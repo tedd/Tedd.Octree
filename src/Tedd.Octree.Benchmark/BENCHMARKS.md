@@ -115,7 +115,8 @@ Run one suite:
 
 ## Spatial and channel hypotheses
 
-The recorded .NET 10/11 reports are under [Results/2026-09-05](Results/2026-09-05).
+The recorded .NET 10/11 reports for the spatial milestone at commit ce6713f
+(before the bulk/streaming extension) are under [Results/2026-09-05](Results/2026-09-05).
 They retain environment information, error estimates, and allocation columns.
 On the .NET 10 reference run:
 
@@ -199,3 +200,36 @@ small differences; preview-runtime and host-load variance can be substantial.
 Pass any additional BenchmarkDotNet command-line options after the separator.
 Do not compare Debug runs or runs conducted concurrently with material system
 load.
+
+## Dense-block and streaming hypotheses
+
+1. Native Morton import should avoid the conversion pass and scratch buffer
+   required by converting to linear order before building. Dense fallback may
+   reverse this advantage because persisted dense values use linear order.
+2. Regional extraction should beat repeated root-to-leaf lookups. Morton output
+   can cost more than contiguous linear writes; neither layout is assumed faster
+   for every workload. A uniform root can fill either order directly.
+3. Known-empty outer worlds should be answered in constant time, independent
+   of the logical voxel count, without a dense world-sized allocation.
+4. Fixed-capacity arena branches and chunk-reference slots should permit
+   allocation-free load/evict cycles and reuse after collapse.
+
+`BulkBlocks` compares native linear builds, native Morton builds, and
+Morton-to-linear conversion plus build, using preallocated destinations. Its
+extraction cases compare linear bulk, Morton bulk, and Morton point-query loops.
+Depths 3/5 select 8/32-cubed blocks, with terrain and dense distributions. Small
+blocks use an unaligned origin inside the 32-cubed source. Setup validates parity.
+
+`BulkWorld` holds eight four-channel chunks in world depths 10/16 and chunk
+depths 3/5. It measures known-empty whole-world checks, resident point lookup,
+all-channel extraction across eight chunks, region enumeration, and a paired
+load/evict cycle. Chunk construction and index provisioning occur in setup;
+streaming includes index mutation, but no I/O, encoding, or allocation of new
+chunk payloads. This separates world lookup cost from chunk generation cost.
+
+    dotnet run -c Release -f net10.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
+    dotnet run -c Release -f net11.0 --project src/Tedd.Octree.Benchmark -- --filter '*Bulk*' --job short
+
+Use complete reports and longer isolated confirmation runs for capacity or
+deployment decisions. Morton input/output semantics use the package's actual
+X-low-bit ordering and are checked against linear dense oracles in unit tests.

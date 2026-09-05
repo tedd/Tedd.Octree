@@ -34,12 +34,12 @@ internal static class OctreeCodec
     internal static StorageKind GetStorageKindUnchecked(ReadOnlySpan<byte> data) =>
         (StorageKind)(data[1] & StorageKindMask);
 
-    internal static int GetRequiredSize(ReadOnlySpan<uint> source, int levels) =>
-        CreateBuildPlan(source, levels).EncodedLength;
+    internal static int GetRequiredSize(ReadOnlySpan<uint> source, int levels, DenseVoxelLayout layout = DenseVoxelLayout.Linear) =>
+        CreateBuildPlan(source, levels, layout).EncodedLength;
 
-    internal static byte[] BuildOwned(ReadOnlySpan<uint> source, int levels)
+    internal static byte[] BuildOwned(ReadOnlySpan<uint> source, int levels, DenseVoxelLayout layout = DenseVoxelLayout.Linear)
     {
-        var plan = CreateBuildPlan(source, levels);
+        var plan = CreateBuildPlan(source, levels, layout);
 #if NET10_0_OR_GREATER
         // Every byte is written before publication; avoid clearing a large dense payload twice.
         var encoded = GC.AllocateUninitializedArray<byte>(plan.EncodedLength);
@@ -59,20 +59,21 @@ internal static class OctreeCodec
 
         if (plan.StorageKind == StorageKind.Dense)
         {
-            WriteDense(source, encoded.AsSpan(HeaderSize));
+            WriteDense(source, encoded.AsSpan(HeaderSize), levels, layout);
             WriteHeader(encoded, levels, StorageKind.Dense);
             return encoded;
         }
 
-        if (!TryBuild(source, levels, encoded, out var written) || written != encoded.Length)
+        if (!TryBuild(source, levels, encoded, out var written, layout) || written != encoded.Length)
             throw new InvalidOperationException("The octree encoder produced an inconsistent tree result.");
 
         return encoded;
     }
 
-    private static BuildPlan CreateBuildPlan(ReadOnlySpan<uint> source, int levels)
+    private static BuildPlan CreateBuildPlan(ReadOnlySpan<uint> source, int levels, DenseVoxelLayout layout)
     {
         ValidateSource(source, levels);
+        DenseVoxel.Validate(layout);
         var denseLength = GetDenseSize(source.Length);
 
         var writer = new OctreeWriter(Span<byte>.Empty, measureOnly: true, denseLength);
@@ -83,7 +84,7 @@ internal static class OctreeCodec
                 rowStride: 1 << levels,
                 planeStride: 1 << (levels * 2),
                 ref writer,
-                out var root))
+                out var root, layout))
         {
             return BuildPlan.Dense(denseLength);
         }
@@ -119,9 +120,10 @@ internal static class OctreeCodec
         ReadOnlySpan<uint> source,
         int levels,
         Span<byte> destination,
-        out int bytesWritten)
+        out int bytesWritten, DenseVoxelLayout layout = DenseVoxelLayout.Linear)
     {
         ValidateSource(source, levels);
+        DenseVoxel.Validate(layout);
 
         if (MemoryMarshal.AsBytes(source).Overlaps(destination))
             throw new ArgumentException("Source and destination must not overlap.", nameof(destination));
@@ -140,7 +142,7 @@ internal static class OctreeCodec
                 rowStride: 1 << levels,
                 planeStride: 1 << (levels * 2),
                 ref writer,
-                out var root);
+                out var root, layout);
 
         if (treeCompleted && root.IsUniform)
         {
@@ -161,7 +163,7 @@ internal static class OctreeCodec
             if (destination.Length < denseLength)
                 return false;
 
-            WriteDense(source, destination[HeaderSize..denseLength]);
+            WriteDense(source, destination[HeaderSize..denseLength], levels, layout);
             WriteHeader(destination, levels, StorageKind.Dense);
             bytesWritten = denseLength;
             return true;
@@ -401,8 +403,18 @@ internal static class OctreeCodec
             (byte)storageKind);
     }
 
-    private static void WriteDense(ReadOnlySpan<uint> source, Span<byte> destination)
+    private static void WriteDense(ReadOnlySpan<uint> source, Span<byte> destination, int levels, DenseVoxelLayout layout)
     {
+        if (layout == DenseVoxelLayout.Morton)
+        {
+            var side = 1 << levels;
+            for (var x = 0; x < side; x++)
+            for (var y = 0; y < side; y++)
+            for (var z = 0; z < side; z++)
+                BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(((x * side + y) * side + z) * sizeof(uint), sizeof(uint)),
+                    source[DenseVoxel.Index(x, y, z, side, layout)]);
+            return;
+        }
         if (BitConverter.IsLittleEndian)
         {
             MemoryMarshal.AsBytes(source).CopyTo(destination);
@@ -432,7 +444,7 @@ internal static class OctreeCodec
         int rowStride,
         int planeStride,
         ref OctreeWriter writer,
-        out SubtreeResult result)
+        out SubtreeResult result, DenseVoxelLayout layout)
     {
         if (level == 0)
         {
@@ -443,7 +455,9 @@ internal static class OctreeCodec
 #if NET10_0_OR_GREATER
         // Runtime span searches select the supported SIMD width. Collapse a
         // uniform region before visiting its descendants.
-        if (level >= 2 && IsUniformRegion(source, baseIndex, 1 << level, rowStride, planeStride))
+        if (level >= 2 && (layout == DenseVoxelLayout.Morton
+            ? source.Slice(baseIndex, 1 << (level * 3)).IndexOfAnyExcept(source[baseIndex]) < 0
+            : IsUniformRegion(source, baseIndex, 1 << level, rowStride, planeStride)))
         {
             result = SubtreeResult.Uniform(source[baseIndex]);
             return true;
@@ -458,7 +472,9 @@ internal static class OctreeCodec
 
         for (var child = 0; child < 8; child++)
         {
-            var childBase = baseIndex +
+            var childBase = layout == DenseVoxelLayout.Morton
+                ? baseIndex + (((child >> 2) | (child & 2) | ((child & 1) << 2)) * half * half * half)
+                : baseIndex +
                             (((child >> 2) & 1) * half * planeStride) +
                             (((child >> 1) & 1) * half * rowStride) +
                             ((child & 1) * half);
@@ -470,7 +486,7 @@ internal static class OctreeCodec
                     rowStride,
                     planeStride,
                     ref writer,
-                    out children[child]))
+                    out children[child], layout))
             {
                 result = default;
                 return false;

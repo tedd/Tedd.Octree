@@ -10,7 +10,7 @@
     <Version>2.0.0</Version>
     <PackageId>Tedd.Octree</PackageId>
     <Authors>Tedd Hansen</Authors>
-    <Description>Allocation-free, span-backed, compact read-only octree for dense UInt32 voxel volumes.</Description>
+    <Description>Compact span-backed voxel octrees with allocation-free queries, linear/Morton bulk operations, multi-channel chunks, and sparse streamed worlds.</Description>
     <Copyright>Copyright © Tedd Hansen</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -18,7 +18,7 @@
     <RepositoryUrl>https://github.com/tedd/Tedd.Octree</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>octree;voxel;span;zero-allocation;performance</PackageTags>
-    <PackageReleaseNotes>Version 2 introduces allocation-free caller-buffer builds, zero-copy OctreeSpan views, pruned area/proximity searches, sliding neighborhood caches, full UInt32 values, and deterministic encoding with dense fallback. Targets .NET 11 preview, .NET 10, and .NET Standard 2.1 with conditional modern optimizations.</PackageReleaseNotes>
+    <PackageReleaseNotes>Version 2 introduces span-backed builds/queries, pruned spatial searches, neighborhood caches, linear/Morton dense blocks, multi-channel chunk packets, and sparse streamed worlds with configurable outer/chunk depths. Targets .NET 11 preview, .NET 10, and .NET Standard 2.1.</PackageReleaseNotes>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>
@@ -28,9 +28,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Tedd.MortonEncoding" Version="1.0.1" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
     <None Include="..\..\README.md" Pack="true" PackagePath="" />
     <None Include="..\..\CHANGELOG.md" Pack="true" PackagePath="" />
+    <None Include="..\..\docs\BULK_STREAMING.md" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 
 </Project>

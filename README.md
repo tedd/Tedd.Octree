@@ -5,6 +5,14 @@ Tedd.Octree is a compact, read-only octree for `UInt32` voxel data. Version 2 st
 - `Octree`, a sealed owned wrapper.
 - `OctreeSpan`, a `readonly ref struct` over caller-owned encoded memory.
 
+`OctreeChunk` groups independently compressed channels. `OctreeWorld` supplies a
+sparse, mutable outer hierarchy for streaming chunks into worlds larger than a
+single dense buffer, preserving the distinction between unloaded data and known
+air. Linear and Morton-ordered dense blocks can be extracted, edited, rebuilt,
+saved, and reloaded. See the complete
+[bulk editing and streaming guide](https://github.com/tedd/Tedd.Octree/blob/v2.0.0/docs/BULK_STREAMING.md)
+for examples of every added API.
+
 For successful, valid-input operations, the caller-buffer build path and `OctreeSpan` lookup path perform no managed heap allocations. The owned build path allocates one final `byte[]` for the encoded tree. Error paths may allocate exception objects. Performance beyond these steady-state allocation contracts remains a hypothesis until measured on the target runtime and hardware.
 
 ## Installation
@@ -14,8 +22,8 @@ is currently preview; the repository pins SDK `11.0.100-preview.7.26381.103`.
 The .NET 10/11 builds use runtime-vectorized uniform-region detection, equality
 searches/counting, and uninitialized result-array allocation when every byte is
 subsequently written. The .NET Standard build uses portable scalar fallbacks.
-The API and encoded byte format are identical across targets. .NET 11 also
-benefits from its runtime's JIT improvements without a separate encoding.
+The API and encoded byte format are identical across targets; runtime-specific
+performance must be measured on the deployment hardware.
 
 ```shell
 dotnet add package Tedd.Octree --version 2.0.0
@@ -37,6 +45,16 @@ count = side * side * side
 ```
 
 Level `0` represents one voxel. Level `9` represents a `512 x 512 x 512` volume.
+These are **single encoded chunk/channel** limits. Outer worlds support depths
+through 20, with Int64 logical voxel counts and independently configurable chunk
+depth. For example:
+
+```csharp
+var world = new OctreeWorld(levels: 10, chunkLevels: 5, channelCount: 4,
+    chunkCapacity: 256, branchCapacity: 2048);
+// A 1024-cubed world containing independently loadable 32-cubed chunks.
+// No dense 1024-cubed buffer is allocated; the initial state is unloaded.
+```
 
 The dense source must contain exactly `count` values in this order:
 
@@ -91,6 +109,7 @@ const int levels = 2;
 const int side = 1 << levels;
 
 Span<uint> values = stackalloc uint[side * side * side];
+values.Clear(); // Stack storage is not guaranteed to be initialized.
 values[(1 * side * side) + (2 * side) + 3] = 42;
 
 int required = Octree.GetRequiredSize(values, levels);
@@ -209,9 +228,10 @@ bool complete = blocks.Query(searchBox, VoxelFilter.NonZero, hits, out int writt
 
 These queries operate on voxel cells. They do not implement continuous or swept
 collision detection. A falling decision must also account for entity bounds,
-velocity, collision rules, and neighboring chunks. Split cross-chunk boxes into
-local boxes; the application defines whether an unloaded chunk is solid, empty,
-or unknown. Query and regional decode destinations must not overlap encoded
+velocity, collision rules, and neighboring chunks. Use `OctreeWorld.TryAny` for
+cross-chunk occupancy checks, or split boxes into local channel queries. Unloaded
+world regions remain unknown; the application decides whether to load or defer.
+Query and regional decode destinations must not overlap encoded
 bytes. Validate untrusted encoded data before spatial queries; malformed input
 may leave partial destination output.
 
@@ -257,7 +277,9 @@ dense data generally did not. See the recorded benchmarks below.
 ## Channels, block updates, and dynamic entities
 
 Use independent `Octree` instances as channels with the same levels and coordinate
-layout. The existing UInt32 payload also supports packed bitfields; `Masked`
+layout, or group them in an `OctreeChunk`. Its dense import/export operates on
+all channels in one channel-major buffer; `WithDenseChannel` rebuilds only one
+changed channel. The existing UInt32 payload also supports packed bitfields; `Masked`
 filters can select collision or material bits without unpacking every channel.
 
 | Data | Suggested initial layout |
@@ -285,7 +307,7 @@ terrain interaction.
 
 ## Validation and errors
 
-- Levels outside `0..9` throw `ArgumentOutOfRangeException`.
+- Single-channel/chunk levels outside `0..9` throw `ArgumentOutOfRangeException`; world levels range from the configured chunk depth through `20`.
 - A dense source length other than `(1 << levels)^3` throws `ArgumentException`; partial volumes are not accepted.
 - `Get` and the indexer require each coordinate to be in `[0, SideLength)`, otherwise they throw `ArgumentOutOfRangeException`. `TryGet` returns `false` for an out-of-range coordinate, and `Contains` reports whether the coordinate is in range.
 - Calling `Get`, `CopyTo`, or `AsSpan` on an unbuilt owned `Octree` throws `InvalidOperationException`. Check `IsBuilt` when its state is uncertain.
@@ -324,7 +346,7 @@ The benchmark suite is intended to test these hypotheses rather than presuppose 
 4. Homogeneous and spatially clustered inputs compress substantially below dense `UInt32[]` storage.
 5. Highly heterogeneous inputs select the dense fallback, trading two header bytes for direct indexing rather than tree traversal.
 
-Results vary with data distribution, level count, JIT, runtime, CPU, and access pattern. Treat a claim as measured only when accompanied by current BenchmarkDotNet output for the relevant environment. Historical reports directly under `src/Tedd.Octree.Benchmark/Results` predate v2; the `2026-09-05` subdirectory records the modern v2 spatial, channel, and build measurements.
+Results vary with data distribution, level count, JIT, runtime, CPU, and access pattern. Treat a claim as measured only when accompanied by BenchmarkDotNet output for the relevant source revision and environment. Historical reports directly under `src/Tedd.Octree.Benchmark/Results` predate v2; `2026-09-05` records the spatial/channel milestone and `2026-09-05-bulk` records the subsequent dense-block/world extension.
 
 The recorded .NET 8 reference screening run confirmed 0 B caller-span builds and
 lookups. Random level-5 lookup measured approximately 7.5 times faster than v1,
