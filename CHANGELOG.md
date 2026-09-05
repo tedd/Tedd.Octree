@@ -15,6 +15,9 @@ All notable changes to Tedd.Voxtree are documented here.
 
 ### Added
 
+- Exact-width generic voxel APIs for arbitrary `IBinaryInteger<TSelf>` values and
+  unmanaged custom structs of 1, 2, 4, 8, or 16 bytes, including chunks,
+  neighborhoods, spatial queries, dense layouts, and sparse worlds.
 - Linear and Tedd.MortonEncoding-ordered dense import/export, unaligned lower-level block extraction, and mutable multi-channel dense span views.
 - Immutable multi-channel chunk snapshots with selective channel rebuilds and versioned, validated chunk packets for save/load.
 - Sparse fixed-capacity outer octrees through depth 20, independently configurable chunk depths, explicit unloaded/known-air states, recyclable branches/payload slots, and zero-allocation streaming operations.
@@ -39,6 +42,9 @@ All notable changes to Tedd.Voxtree are documented here.
 
 ### Performance design
 
+- Morton reconstruction reuses scanned uniform prefixes across tree depths; full and aligned-subtree Morton decoding writes contiguous output intervals without per-voxel coordinate conversion.
+- Added explicit dense-layout overloads for `CopyTo` and `TryCopyTo`; linear/Morton permutation reuses axis encodings from Tedd.MortonEncoding.
+- Archived the pre-optimization conversion code with paired BenchmarkDotNet cases for repeatable regression comparisons.
 - Native Morton builds avoid a conversion scratch buffer; uniform blocks and aligned homogeneous Morton octants use contiguous fills during extraction.
 - Streaming branches and resident slots use fixed-capacity recyclable arenas; known-empty outer regions collapse without retaining dense buffers or per-chunk payloads.
 - .NET 10/11 use SIMD-enabled span searches and counting, early uniform-region detection, and uninitialized result-array allocation; .NET Standard retains portable fallbacks.

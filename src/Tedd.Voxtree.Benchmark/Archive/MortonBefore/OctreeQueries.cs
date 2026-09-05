@@ -2,7 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 internal static class OctreeQueries
 {
@@ -68,17 +68,6 @@ internal static class OctreeQueries
     {
         if (level <= 0 || offset < OctreeCodec.HeaderSize || offset >= data.Length)
             throw new FormatException("Malformed tree node.");
-        var size = 1 << level;
-        if (state.Kind == QueryKind.Copy && state.OutputLayout == DenseVoxelLayout.Morton && state.RingSide == 0 &&
-            state.Box.Contains(new VoxelBox(x, y, z, x + size, y + size, z + size)) &&
-            (((x - state.CopyBounds.MinX) | (y - state.CopyBounds.MinY) | (z - state.CopyBounds.MinZ)) & (size - 1)) == 0)
-        {
-            var start = DenseVoxel.Index(x - state.CopyBounds.MinX, y - state.CopyBounds.MinY,
-                z - state.CopyBounds.MinZ, state.CopyBounds.MaxX - state.CopyBounds.MinX, DenseVoxelLayout.Morton);
-            if (!OctreeCodec.TryDecodeMortonNode(data, offset, level, state.Values.Slice(start, size * size * size)))
-                throw new FormatException("Malformed tree node.");
-            return;
-        }
         var cursor = offset;
         var mask = data[cursor++];
         Span<uint> tokens = stackalloc uint[8];
@@ -117,17 +106,6 @@ internal static class OctreeQueries
     private static void Dense(ReadOnlySpan<byte> data, int side, ref State state)
     {
         var box = state.Box;
-        if (state.Kind == QueryKind.Copy && state.OutputLayout == DenseVoxelLayout.Morton && state.RingSide == 0 &&
-            box.MinX == 0 && box.MinY == 0 && box.MinZ == 0 &&
-            box.MaxX == side && box.MaxY == side && box.MaxZ == side &&
-            state.CopyBounds.MinX == 0 && state.CopyBounds.MinY == 0 && state.CopyBounds.MinZ == 0 &&
-            state.CopyBounds.MaxX == side && state.CopyBounds.MaxY == side && state.CopyBounds.MaxZ == side)
-        {
-            var levels = 0;
-            for (var length = side; length > 1; length >>= 1) levels++;
-            OctreeCodec.ReadDense(data[OctreeCodec.HeaderSize..], state.Values[..box.Count], levels, state.OutputLayout);
-            return;
-        }
         for (var x = box.MinX; x < box.MaxX && !state.Done; x++)
         for (var y = box.MinY; y < box.MaxY && !state.Done; y++)
         {

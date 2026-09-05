@@ -64,6 +64,11 @@ index = (x * side * side) + (y * side) + z
 
 `z` is therefore the fastest-changing coordinate, followed by `y`, then `x`. This ordering is part of the public input contract; do not pass a `z/y/x`-major buffer without reordering it.
 
+The generic APIs (`Octree<T>`, `OctreeSpan<T>`, chunks, neighborhoods, and worlds)
+accept any unmanaged 1-, 2-, 4-, 8-, or 16-byte value type, including every
+`IBinaryInteger<TSelf>` implementation and exact-width custom structs. See
+[Generic voxel values](docs/GENERIC_VALUES.md) for representation and format details.
+
 ## Owned tree
 
 Use `Octree` when the tree must outlive an input buffer, cross an `async` boundary, or be retained in a heap object:
@@ -163,6 +168,12 @@ Octree tree = Octree.FromEncoded(packet);
 var dense = new uint[tree.Count];
 tree.CopyTo(dense);
 ```
+
+Pass `DenseVoxelLayout.Morton` to `CopyTo` or `TryCopyTo` to decode directly into
+Morton order. Morton builds reuse scanned uniform runs, and decoding fills
+contiguous Morton octants without a linear scratch buffer. See
+[dense conversion details](docs/BULK_STREAMING.md#linear-and-morton-indexing) and
+the [repeatable before/after benchmarks](src/Tedd.Voxtree.Benchmark/Archive/MortonBefore/README.md).
 
 ## API summary
 

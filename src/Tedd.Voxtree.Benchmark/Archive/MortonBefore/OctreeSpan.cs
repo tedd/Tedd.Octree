@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>
 /// A stack-only, allocation-free view over a serialized octree.
@@ -109,31 +109,24 @@ public readonly ref partial struct OctreeSpan
     /// <exception cref="InvalidOperationException">This is a default view.</exception>
     /// <exception cref="ArgumentException">The destination is too short or overlaps the encoded data.</exception>
     /// <exception cref="FormatException">The encoded structure is malformed.</exception>
-    public void CopyTo(Span<uint> destination) => CopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Validates and expands the complete volume directly into the requested dense layout.</summary>
-    public void CopyTo(Span<uint> destination, DenseVoxelLayout layout)
+    public void CopyTo(Span<uint> destination)
     {
-        DenseVoxel.Validate(layout);
         if (!IsValid)
             throw new InvalidOperationException("The octree view is not initialized.");
         if (destination.Length < Count)
             throw new ArgumentException($"Destination must contain at least {Count} elements.", nameof(destination));
         if (MemoryMarshal.AsBytes(destination[..Count]).Overlaps(_data))
             throw new ArgumentException("Destination must not overlap the encoded octree.", nameof(destination));
-        if (!OctreeCodec.TryCopyTo(_data, _levels, _storageKind, destination, layout))
+        if (!OctreeCodec.TryCopyTo(_data, _levels, _storageKind, destination))
             throw new FormatException("The octree data is malformed.");
     }
 
     /// <summary>Attempts to expand the encoded volume into a caller-provided span.</summary>
-    public bool TryCopyTo(Span<uint> destination) => TryCopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Attempts validated expansion into the requested layout; failure leaves the destination unchanged.</summary>
-    public bool TryCopyTo(Span<uint> destination, DenseVoxelLayout layout)
-    {
-        DenseVoxel.Validate(layout);
-        return IsValid && OctreeCodec.TryCopyTo(_data, _levels, _storageKind, destination, layout);
-    }
+    public bool TryCopyTo(Span<uint> destination) =>
+        IsValid &&
+        destination.Length >= Count &&
+        !MemoryMarshal.AsBytes(destination[..Count]).Overlaps(_data) &&
+        OctreeCodec.TryCopyTo(_data, _levels, _storageKind, destination);
 
     /// <summary>Performs allocation-free structural and primitive-encoding validation.</summary>
     public bool IsWellFormed() =>

@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>
 /// Owns the compact, immutable encoding of a cubic <see cref="uint"/> voxel volume.
@@ -136,25 +136,18 @@ public sealed partial class Octree
     /// <exception cref="InvalidOperationException">The tree has not been built.</exception>
     /// <exception cref="ArgumentException">The destination is too short or overlaps the encoded data.</exception>
     /// <exception cref="FormatException">The encoded structure is malformed.</exception>
-    public void CopyTo(Span<uint> destination) => CopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Expands the encoded volume directly into the requested dense layout.</summary>
-    public void CopyTo(Span<uint> destination, DenseVoxelLayout layout)
+    public void CopyTo(Span<uint> destination)
     {
-        AsSpan().CopyTo(destination, layout);
+        AsSpan().CopyTo(destination);
     }
 
     /// <summary>Attempts to expand the encoded volume into a caller-provided span.</summary>
-    public bool TryCopyTo(Span<uint> destination) => TryCopyTo(destination, DenseVoxelLayout.Linear);
-
-    /// <summary>Attempts to expand the encoded volume directly into the requested dense layout.</summary>
-    public bool TryCopyTo(Span<uint> destination, DenseVoxelLayout layout)
+    public bool TryCopyTo(Span<uint> destination)
     {
-        DenseVoxel.Validate(layout);
         var encoded = Volatile.Read(ref _data);
         return encoded.Length != 0 &&
                OctreeSpan.CreateTrusted(encoded, _levels, OctreeCodec.GetStorageKindUnchecked(encoded))
-                   .TryCopyTo(destination, layout);
+                   .TryCopyTo(destination);
     }
 
     /// <summary>Captures an allocation-free, stack-only snapshot that remains valid across subsequent builds.</summary>

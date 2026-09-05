@@ -63,10 +63,34 @@ int exact = Octree.GetRequiredSize(morton, levels, DenseVoxelLayout.Morton);
 bool built = Octree.TryBuild(morton, levels, encoded, out written, DenseVoxelLayout.Morton);
 ```
 
-Native Morton builds traverse contiguous Morton subtrees without first converting
-the input into a separate linear array. If compression selects dense encoding,
+Native Morton builds scan contiguous octant slices and reuse each scanned uniform
+prefix in descendants, avoiding repeated scans at successive depths. Each build
+pass takes O(N) work and O(depth) stack space, without a layout-conversion buffer
+or coordinate encoding per voxel. Equal-value runs collapse only where they cover
+complete aligned octants; an octree is not arbitrary run-length encoding.
+The persisted child order remains Z-first, with a three-bit permutation to the
+Morton package's X-first order, so linear and Morton inputs produce identical bytes.
+
+Full-volume decoding accepts the requested layout directly:
+
+```csharp
+view.CopyTo(morton, DenseVoxelLayout.Morton);
+bool copied = tree.TryCopyTo(morton, DenseVoxelLayout.Morton);
+```
+
+Morton tree decoding writes forward through contiguous output intervals and fills
+each uniform octant in bulk. Aligned `CopyBlockTo` subtrees use the same decoder;
+unaligned blocks retain clipped spatial traversal. `CopyTo`/`TryCopyTo` validate
+the complete encoding before writing, while block queries require prior validation
+of untrusted input. Rebuilding or decoding a tree in Morton order does not require
+an intermediate linear array.
+
+When a layout change is necessary, `DenseVoxel.Convert` uses Tedd.MortonEncoding
+once per axis coordinate and combines the interleaved bits for each voxel, using
+at most 2 KiB of stack storage. If compression selects dense encoding,
 the persisted dense payload remains linear little-endian UInt32 data; input
-layout is not a new serialized octree format.
+layout is not a new serialized octree format. This fallback still requires a
+layout permutation when importing or exporting Morton data.
 
 ## Extract a lower-level dense block
 

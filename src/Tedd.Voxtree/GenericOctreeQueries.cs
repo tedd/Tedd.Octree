@@ -1,93 +1,98 @@
 using System;
-using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Tedd.Voxtree;
 
-internal static class OctreeQueries
+internal static class GenericOctreeQueries<T> where T : unmanaged
 {
     internal enum QueryKind { Any, Count, Collect, Copy, Nearest }
 
-    internal static void Validate(OctreeSpan tree, VoxelBox box)
+    internal static void Validate(OctreeSpan<T> tree, VoxelBox box)
     {
-        if (!tree.IsValid)
-            throw new InvalidOperationException("The octree view is not initialized.");
+        if (!tree.IsValid) throw new InvalidOperationException("The octree view is not initialized.");
         var side = tree.SideLength;
         if (box.MinX < 0 || box.MinY < 0 || box.MinZ < 0 ||
             box.MaxX > side || box.MaxY > side || box.MaxZ > side)
             throw new ArgumentOutOfRangeException(nameof(box), "Query bounds must lie within the volume.");
     }
 
-    internal static VoxelBox RadiusBox(OctreeSpan tree, int x, int y, int z, int radius)
+    internal static VoxelBox RadiusBox(OctreeSpan<T> tree, int x, int y, int z, int radius)
     {
-        if (!tree.IsValid)
-            throw new InvalidOperationException("The octree view is not initialized.");
+        if (!tree.IsValid) throw new InvalidOperationException("The octree view is not initialized.");
         if (!tree.Contains(x, y, z))
             throw new ArgumentOutOfRangeException(nameof(x), "The query center must lie within the volume.");
-        if (radius < 0)
-            throw new ArgumentOutOfRangeException(nameof(radius));
+        if (radius < 0) throw new ArgumentOutOfRangeException(nameof(radius));
         var side = tree.SideLength;
         var r = Math.Min(radius, side);
         return new VoxelBox(Math.Max(0, x - r), Math.Max(0, y - r), Math.Max(0, z - r),
             Math.Min(side, x + r + 1), Math.Min(side, y + r + 1), Math.Min(side, z + r + 1));
     }
 
-    internal static void Run(OctreeSpan tree, ref State state)
+    internal static void Run(OctreeSpan<T> tree, ref State state)
     {
-        if (state.Box.IsEmpty)
-            return;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 1: RunCore<byte>(tree, ref state); return;
+            case 2: RunCore<ushort>(tree, ref state); return;
+            case 4: RunCore<uint>(tree, ref state); return;
+            case 8: RunCore<ulong>(tree, ref state); return;
+            case 16: RunCore<VoxelUInt128>(tree, ref state); return;
+            default: VoxelType<T>.Validate(); return;
+        }
+    }
+
+    private static void RunCore<TStorage>(OctreeSpan<T> tree, ref State state)
+        where TStorage : unmanaged, IEquatable<TStorage>
+    {
+        if (state.Box.IsEmpty) return;
         var data = tree.Data;
-        var kind = OctreeCodec.GetStorageKindUnchecked(data);
+        var kind = VoxelCodec<T>.GetStorageKindUnchecked(data);
         if (kind == StorageKind.Dense)
         {
-            Dense(data, tree.SideLength, ref state);
+            Dense<TStorage>(data, tree.SideLength, ref state);
             return;
         }
         if (kind == StorageKind.Uniform)
         {
-            var cursor = OctreeCodec.HeaderSize;
-            if (!OctreeCodec.TryReadVarUInt(data, ref cursor, out var value))
+            var cursor = GenericOctreeCodec<TStorage>.HeaderSize;
+            if (!GenericOctreeCodec<TStorage>.TryReadValue(data, ref cursor, out var storage))
                 throw new FormatException("Malformed uniform value.");
-            if (state.Kind == QueryKind.Copy && state.RingSide == 0 &&
-                state.Box.MinX == state.CopyBounds.MinX && state.Box.MinY == state.CopyBounds.MinY &&
-                state.Box.MinZ == state.CopyBounds.MinZ && state.Box.MaxX == state.CopyBounds.MaxX &&
-                state.Box.MaxY == state.CopyBounds.MaxY && state.Box.MaxZ == state.CopyBounds.MaxZ)
+            var value = ToValue(storage);
+            if (state.Kind == QueryKind.Copy && state.RingSide == 0 && state.Box.Equals(state.CopyBounds))
             {
-                state.Values[..state.Box.Count].Fill(value); // A constant block has the same dense representation in either order.
+                state.Values[..state.Box.Count].Fill(value);
                 return;
             }
             state.Accept(state.Box, value);
             return;
         }
         var body = data[..^1];
-        Visit(body, body.Length - data[^1], tree.Levels, 0, 0, 0, ref state);
+        Visit<TStorage>(body, body.Length - data[^1], tree.Levels, 0, 0, 0, ref state);
     }
 
-    private static void Visit(ReadOnlySpan<byte> data, int offset, int level,
+    private static void Visit<TStorage>(ReadOnlySpan<byte> data, int offset, int level,
         int x, int y, int z, ref State state)
+        where TStorage : unmanaged, IEquatable<TStorage>
     {
-        if (level <= 0 || offset < OctreeCodec.HeaderSize || offset >= data.Length)
+        if (level <= 0 || offset < GenericOctreeCodec<TStorage>.HeaderSize || offset >= data.Length)
             throw new FormatException("Malformed tree node.");
-        var size = 1 << level;
-        if (state.Kind == QueryKind.Copy && state.OutputLayout == DenseVoxelLayout.Morton && state.RingSide == 0 &&
-            state.Box.Contains(new VoxelBox(x, y, z, x + size, y + size, z + size)) &&
-            (((x - state.CopyBounds.MinX) | (y - state.CopyBounds.MinY) | (z - state.CopyBounds.MinZ)) & (size - 1)) == 0)
-        {
-            var start = DenseVoxel.Index(x - state.CopyBounds.MinX, y - state.CopyBounds.MinY,
-                z - state.CopyBounds.MinZ, state.CopyBounds.MaxX - state.CopyBounds.MinX, DenseVoxelLayout.Morton);
-            if (!OctreeCodec.TryDecodeMortonNode(data, offset, level, state.Values.Slice(start, size * size * size)))
-                throw new FormatException("Malformed tree node.");
-            return;
-        }
         var cursor = offset;
         var mask = data[cursor++];
-        Span<uint> tokens = stackalloc uint[8];
+        Span<TStorage> values = stackalloc TStorage[8];
+        Span<uint> distances = stackalloc uint[8];
         for (var child = 0; child < 8; child++)
-            if (!OctreeCodec.TryReadVarUInt(data, ref cursor, out tokens[child]))
-                throw new FormatException("Malformed tree token.");
+        {
+            if ((mask & (1 << child)) != 0)
+            {
+                if (!GenericOctreeCodec<TStorage>.TryReadValue(data, ref cursor, out values[child]))
+                    throw new FormatException("Malformed tree value.");
+            }
+            else if (!OctreeCodec.TryReadVarUInt(data, ref cursor, out distances[child]))
+                throw new FormatException("Malformed tree offset.");
+        }
 
         var half = 1 << (level - 1);
-        // Visit the octant containing the center first to tighten nearest bounds early.
         var preferred = state.Kind == QueryKind.Nearest
             ? ((state.X >= x + half ? 1 : 0) << 2) |
               ((state.Y >= y + half ? 1 : 0) << 1) | (state.Z >= z + half ? 1 : 0)
@@ -100,42 +105,36 @@ internal static class OctreeQueries
             var cz = z + ((child & 1) * half);
             var clipped = state.Box.Intersect(new VoxelBox(cx, cy, cz, cx + half, cy + half, cz + half));
             if (clipped.IsEmpty ||
-                (state.Kind == QueryKind.Nearest && clipped.DistanceSquared(state.X, state.Y, state.Z) > state.BestDistance))
+                (state.Kind == QueryKind.Nearest &&
+                 clipped.DistanceSquared(state.X, state.Y, state.Z) > state.BestDistance))
                 continue;
             if ((mask & (1 << child)) != 0)
-                state.Accept(clipped, tokens[child]);
+                state.Accept(clipped, ToValue(values[child]));
             else
             {
-                var distance = tokens[child];
-                if (level == 1 || distance == 0 || distance > (uint)(offset - OctreeCodec.HeaderSize))
+                var distance = distances[child];
+                if (level == 1 || distance == 0 ||
+                    distance > (uint)(offset - GenericOctreeCodec<TStorage>.HeaderSize))
                     throw new FormatException("Malformed child offset.");
-                Visit(data, offset - (int)distance, level - 1, cx, cy, cz, ref state);
+                Visit<TStorage>(data, offset - (int)distance, level - 1, cx, cy, cz, ref state);
             }
         }
     }
 
-    private static void Dense(ReadOnlySpan<byte> data, int side, ref State state)
+    private static void Dense<TStorage>(ReadOnlySpan<byte> data, int side, ref State state)
+        where TStorage : unmanaged, IEquatable<TStorage>
     {
         var box = state.Box;
-        if (state.Kind == QueryKind.Copy && state.OutputLayout == DenseVoxelLayout.Morton && state.RingSide == 0 &&
-            box.MinX == 0 && box.MinY == 0 && box.MinZ == 0 &&
-            box.MaxX == side && box.MaxY == side && box.MaxZ == side &&
-            state.CopyBounds.MinX == 0 && state.CopyBounds.MinY == 0 && state.CopyBounds.MinZ == 0 &&
-            state.CopyBounds.MaxX == side && state.CopyBounds.MaxY == side && state.CopyBounds.MaxZ == side)
-        {
-            var levels = 0;
-            for (var length = side; length > 1; length >>= 1) levels++;
-            OctreeCodec.ReadDense(data[OctreeCodec.HeaderSize..], state.Values[..box.Count], levels, state.OutputLayout);
-            return;
-        }
+        var valueSize = Unsafe.SizeOf<TStorage>();
         for (var x = box.MinX; x < box.MaxX && !state.Done; x++)
         for (var y = box.MinY; y < box.MaxY && !state.Done; y++)
         {
-            var start = OctreeCodec.HeaderSize + (((x * side + y) * side + box.MinZ) * sizeof(uint));
-            var rowBytes = data.Slice(start, (box.MaxZ - box.MinZ) * sizeof(uint));
+            var start = GenericOctreeCodec<TStorage>.HeaderSize +
+                        (((x * side + y) * side + box.MinZ) * valueSize);
+            var rowBytes = data.Slice(start, (box.MaxZ - box.MinZ) * valueSize);
             if (BitConverter.IsLittleEndian)
             {
-                var row = MemoryMarshal.Cast<byte, uint>(rowBytes);
+                var row = MemoryMarshal.Cast<TStorage, T>(MemoryMarshal.Cast<byte, TStorage>(rowBytes));
                 if (state.Kind == QueryKind.Count)
                 {
                     state.Count += state.Filter.CountIn(row);
@@ -158,20 +157,26 @@ internal static class OctreeQueries
             }
             for (var z = box.MinZ; z < box.MaxZ && !state.Done; z++)
             {
-                var value = BinaryPrimitives.ReadUInt32LittleEndian(rowBytes.Slice((z - box.MinZ) * sizeof(uint), sizeof(uint)));
-                state.Accept(new VoxelBox(x, y, z, x + 1, y + 1, z + 1), value);
+                var valueOffset = (z - box.MinZ) * valueSize;
+                if (!GenericOctreeCodec<TStorage>.TryReadFixedValue(rowBytes, valueOffset, out var storage))
+                    throw new FormatException("Malformed dense value.");
+                state.Accept(new VoxelBox(x, y, z, x + 1, y + 1, z + 1), ToValue(storage));
             }
         }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static T ToValue<TStorage>(TStorage value) where TStorage : unmanaged =>
+        Unsafe.As<TStorage, T>(ref value);
 
     internal ref struct State
     {
         internal QueryKind Kind;
         internal VoxelBox Box;
         internal VoxelBox CopyBounds;
-        internal VoxelFilter Filter;
-        internal Span<VoxelHit> Hits;
-        internal Span<uint> Values;
+        internal VoxelFilter<T> Filter;
+        internal Span<VoxelHit<T>> Hits;
+        internal Span<T> Values;
         internal int RingSide;
         internal DenseVoxelLayout OutputLayout;
         internal int Count;
@@ -179,16 +184,19 @@ internal static class OctreeQueries
         internal bool Truncated;
         internal int X, Y, Z;
         internal long BestDistance;
-        internal VoxelHit Nearest;
+        internal VoxelHit<T> Nearest;
         internal bool Found;
 
-        internal State(QueryKind kind, VoxelBox box, VoxelFilter filter)
+        internal State(QueryKind kind, VoxelBox box, VoxelFilter<T> filter)
         {
             this = default;
-            Kind = kind; Box = box; CopyBounds = box; Filter = filter;
+            Kind = kind;
+            Box = box;
+            CopyBounds = box;
+            Filter = filter;
         }
 
-        internal void Accept(VoxelBox box, uint value)
+        internal void Accept(VoxelBox box, T value)
         {
             if (Kind == QueryKind.Copy)
             {
@@ -197,9 +205,9 @@ internal static class OctreeQueries
                     var side = box.MaxX - box.MinX;
                     var mask = side - 1;
                     if ((side & mask) == 0 && side == box.MaxY - box.MinY && side == box.MaxZ - box.MinZ &&
-                        (((box.MinX - CopyBounds.MinX) | (box.MinY - CopyBounds.MinY) | (box.MinZ - CopyBounds.MinZ)) & mask) == 0)
+                        (((box.MinX - CopyBounds.MinX) | (box.MinY - CopyBounds.MinY) |
+                          (box.MinZ - CopyBounds.MinZ)) & mask) == 0)
                     {
-                        // An aligned octant is one contiguous Morton interval, including within a larger output block.
                         Values.Slice(RowOffset(box.MinX, box.MinY, box.MinZ), box.Count).Fill(value);
                         return;
                     }
@@ -209,26 +217,29 @@ internal static class OctreeQueries
                     FillRow(x, y, box.MinZ, box.MaxZ - box.MinZ, value);
                 return;
             }
-            if (!Filter.Matches(value))
-                return;
+            if (!Filter.Matches(value)) return;
             if (Kind == QueryKind.Any)
             {
-                Count = 1; Done = true;
+                Count = 1;
+                Done = true;
             }
-            else if (Kind == QueryKind.Count)
-                Count += box.Count;
+            else if (Kind == QueryKind.Count) Count += box.Count;
             else if (Kind == QueryKind.Nearest)
             {
                 var x = VoxelBox.Clamp(X, box.MinX, box.MaxX - 1);
                 var y = VoxelBox.Clamp(Y, box.MinY, box.MaxY - 1);
                 var z = VoxelBox.Clamp(Z, box.MinZ, box.MaxZ - 1);
-                var dx = X - x; var dy = Y - y; var dz = Z - z;
+                var dx = X - x;
+                var dy = Y - y;
+                var dz = Z - z;
                 var distance = (long)dx * dx + (long)dy * dy + (long)dz * dz;
                 if (distance > BestDistance ||
                     (Found && distance == BestDistance &&
-                     (x > Nearest.X || (x == Nearest.X && (y > Nearest.Y || (y == Nearest.Y && z >= Nearest.Z))))))
-                    return;
-                BestDistance = distance; Nearest = new VoxelHit(x, y, z, value); Found = true;
+                     (x > Nearest.X || (x == Nearest.X &&
+                      (y > Nearest.Y || (y == Nearest.Y && z >= Nearest.Z)))))) return;
+                BestDistance = distance;
+                Nearest = new VoxelHit<T>(x, y, z, value);
+                Found = true;
                 if (distance == 0) Done = true;
             }
             else
@@ -239,9 +250,11 @@ internal static class OctreeQueries
                 {
                     if (Count == Hits.Length)
                     {
-                        Truncated = true; Done = true; return;
+                        Truncated = true;
+                        Done = true;
+                        return;
                     }
-                    Hits[Count++] = new VoxelHit(x, y, z, value);
+                    Hits[Count++] = new VoxelHit<T>(x, y, z, value);
                 }
             }
         }
@@ -256,11 +269,11 @@ internal static class OctreeQueries
                 var mask = RingSide - 1;
                 return (((x & mask) * RingSide + (y & mask)) * RingSide) + (z & mask);
             }
-            return (((x - CopyBounds.MinX) * (CopyBounds.MaxY - CopyBounds.MinY) +
-                y - CopyBounds.MinY) * (CopyBounds.MaxZ - CopyBounds.MinZ)) + z - CopyBounds.MinZ;
+            return (((x - CopyBounds.MinX) * (CopyBounds.MaxY - CopyBounds.MinY) + y - CopyBounds.MinY) *
+                    (CopyBounds.MaxZ - CopyBounds.MinZ)) + z - CopyBounds.MinZ;
         }
 
-        private void FillRow(int x, int y, int z, int count, uint value)
+        private void FillRow(int x, int y, int z, int count, T value)
         {
             if (OutputLayout == DenseVoxelLayout.Morton)
             {
@@ -269,11 +282,10 @@ internal static class OctreeQueries
             }
             var first = RingSide == 0 ? count : Math.Min(count, RingSide - (z & (RingSide - 1)));
             Values.Slice(RowOffset(x, y, z), first).Fill(value);
-            if (first != count)
-                Values.Slice(RowOffset(x, y, z + first), count - first).Fill(value);
+            if (first != count) Values.Slice(RowOffset(x, y, z + first), count - first).Fill(value);
         }
 
-        internal void CopyRow(int x, int y, int z, ReadOnlySpan<uint> row)
+        internal void CopyRow(int x, int y, int z, ReadOnlySpan<T> row)
         {
             if (OutputLayout == DenseVoxelLayout.Morton)
             {

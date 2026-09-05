@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace Tedd.Voxtree;
+namespace Tedd.Voxtree.Benchmark.Archive.MortonBefore;
 
 /// <summary>The order of voxels within each dense channel.</summary>
 public enum DenseVoxelLayout
@@ -84,29 +84,9 @@ public static class DenseVoxel
         if (sourceLayout == destinationLayout) { source.CopyTo(destination); return; }
         if (source.Overlaps(destination)) throw new ArgumentException("Layout conversion buffers must not overlap.");
         var side = 1 << levels;
-        // Interleave each coordinate once, rather than encoding all three axes per voxel.
-        // At MaxLevels this uses only 2 KiB of stack space.
-        Span<int> axis = stackalloc int[side];
-        for (var i = 0; i < side; i++)
-            axis[i] = (int)global::Tedd.MortonEncoding.Encode((uint)i, 0u, 0u);
-        var linear = 0;
-        if (sourceLayout == DenseVoxelLayout.Linear)
-        {
-            for (var x = 0; x < side; x++)
-            for (var y = 0; y < side; y++)
-            {
-                var xy = axis[x] | (axis[y] << 1);
-                for (var z = 0; z < side; z++)
-                    destination[xy | (axis[z] << 2)] = source[linear++];
-            }
-            return;
-        }
         for (var x = 0; x < side; x++)
         for (var y = 0; y < side; y++)
-        {
-            var xy = axis[x] | (axis[y] << 1);
-            for (var z = 0; z < side; z++)
-                destination[linear++] = source[xy | (axis[z] << 2)];
-        }
+        for (var z = 0; z < side; z++)
+            destination[Index(x, y, z, side, destinationLayout)] = source[Index(x, y, z, side, sourceLayout)];
     }
 }
