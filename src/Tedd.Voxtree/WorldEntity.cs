@@ -110,7 +110,7 @@ public sealed partial class WorldEntity
         if (chunk is null) throw new ArgumentNullException(nameof(chunk));
         if (chunk.SideLength != ChunkSize || chunk.ChannelCount != ChannelCount)
             throw new ArgumentException("Chunk schema does not match the world entity.", nameof(chunk));
-        _chunks.Set(coordinate, chunk);
+        _chunks.Set(coordinate, chunk, chunk.SerializedLength, isDirty: true);
     }
 
     /// <summary>Gets a loaded chunk by chunk coordinate.</summary>
@@ -178,11 +178,13 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
     private const int LookupMask = LookupSize - 1;
 
     private readonly Dictionary<ChunkCoordinate, TChunk> _items = new();
+    private readonly Dictionary<ChunkCoordinate, ResidencyState> _residency = new();
     private readonly ReadOnlyDictionary<ChunkCoordinate, TChunk> _readOnlyItems;
     private readonly CacheEntry[] _recent;
     private readonly int[] _lookup = new int[LookupSize];
     private int _recentCount;
     private ulong _access;
+    private long _estimatedBytes;
 
     internal RecentChunkMap(int recentCapacity)
     {
@@ -191,7 +193,9 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
     }
 
     internal int Count => _items.Count;
+    internal long EstimatedBytes => _estimatedBytes;
     internal IReadOnlyDictionary<ChunkCoordinate, TChunk> Items => _readOnlyItems;
+    internal IEnumerable<KeyValuePair<ChunkCoordinate, TChunk>> Entries => _items;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool TryGetValue(ChunkCoordinate coordinate, out TChunk? value)
@@ -205,7 +209,7 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
             ref var entry = ref _recent[recentIndex];
             if (entry.Hash == hash && entry.Coordinate == coordinate)
             {
-                entry.Access = ++_access;
+                entry.State!.LastAccessSequence = entry.Access = ++_access;
                 value = entry.Value;
                 return true;
             }
@@ -214,7 +218,9 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
 
         if (_items.TryGetValue(coordinate, out var found))
         {
-            AddRecent(coordinate, hash, found);
+            var state = _residency[coordinate];
+            state.LastAccessSequence = ++_access;
+            AddRecent(coordinate, hash, found, state);
             value = found;
             return true;
         }
@@ -222,22 +228,40 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
         return false;
     }
 
-    internal void Set(ChunkCoordinate coordinate, TChunk value)
+    internal bool TryPeekValue(ChunkCoordinate coordinate, out TChunk? value) =>
+        _items.TryGetValue(coordinate, out value);
+
+    internal void Set(ChunkCoordinate coordinate, TChunk value, long estimatedBytes, bool isDirty)
     {
+        if (estimatedBytes < 0) throw new ArgumentOutOfRangeException(nameof(estimatedBytes));
+        var exists = _residency.TryGetValue(coordinate, out var state);
+        var nextEstimatedBytes = checked(_estimatedBytes - (state?.EstimatedBytes ?? 0) + estimatedBytes);
         _items[coordinate] = value;
+        if (!exists)
+        {
+            state = new ResidencyState();
+            _residency.Add(coordinate, state);
+        }
+        state!.EstimatedBytes = estimatedBytes;
+        state.IsDirty = isDirty;
+        state.LastAccessSequence = ++_access;
+        _estimatedBytes = nextEstimatedBytes;
         var hash = coordinate.GetHashCode() & int.MaxValue;
         if (TryFindRecent(coordinate, hash, out var index))
         {
             _recent[index].Value = value;
-            _recent[index].Access = ++_access;
+            _recent[index].State = state;
+            _recent[index].Access = state.LastAccessSequence;
             return;
         }
-        AddRecent(coordinate, hash, value);
+        AddRecent(coordinate, hash, value, state);
     }
 
     internal bool Remove(ChunkCoordinate coordinate)
     {
         if (!_items.Remove(coordinate)) return false;
+        _estimatedBytes -= _residency[coordinate].EstimatedBytes;
+        _residency.Remove(coordinate);
         var hash = coordinate.GetHashCode() & int.MaxValue;
         if (!TryFindRecent(coordinate, hash, out var index)) return true;
         _recentCount--;
@@ -250,10 +274,48 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
     internal void Clear()
     {
         _items.Clear();
+        _residency.Clear();
         Array.Clear(_recent, 0, _recent.Length);
         Array.Clear(_lookup, 0, _lookup.Length);
         _recentCount = 0;
         _access = 0;
+        _estimatedBytes = 0;
+    }
+
+    internal bool TryGetResidencyInfo(ChunkCoordinate coordinate, out ChunkResidencyInfo info)
+    {
+        if (_residency.TryGetValue(coordinate, out var state))
+        {
+            info = new ChunkResidencyInfo(coordinate, state.EstimatedBytes,
+                state.LastAccessSequence, state.IsDirty);
+            return true;
+        }
+        info = default;
+        return false;
+    }
+
+    internal List<EvictionCandidate> GetEvictionCandidates(ChunkCoordinate? excluded)
+    {
+        var candidates = new List<EvictionCandidate>(_residency.Count);
+        foreach (var pair in _residency)
+        {
+            if (excluded.HasValue && pair.Key == excluded.Value) continue;
+            candidates.Add(new EvictionCandidate(pair.Key, _items[pair.Key],
+                pair.Value.IsDirty, pair.Value.LastAccessSequence));
+        }
+        candidates.Sort(static (left, right) => left.LastAccessSequence.CompareTo(right.LastAccessSequence));
+        return candidates;
+    }
+
+    internal void MarkClean(ChunkCoordinate coordinate, TChunk expected)
+    {
+        if (_items.TryGetValue(coordinate, out var current) && ReferenceEquals(current, expected))
+            _residency[coordinate].IsDirty = false;
+    }
+
+    internal void MarkAllDirty()
+    {
+        foreach (var state in _residency.Values) state.IsDirty = true;
     }
 
     private bool TryFindRecent(ChunkCoordinate coordinate, int hash, out int index)
@@ -271,7 +333,7 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
         return false;
     }
 
-    private void AddRecent(ChunkCoordinate coordinate, int hash, TChunk value)
+    private void AddRecent(ChunkCoordinate coordinate, int hash, TChunk value, ResidencyState state)
     {
         int index;
         if (_recentCount < _recent.Length)
@@ -284,7 +346,7 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
             for (var candidate = 1; candidate < _recentCount; candidate++)
                 if (_recent[candidate].Access < _recent[index].Access) index = candidate;
         }
-        _recent[index] = new CacheEntry(coordinate, hash, value, ++_access);
+        _recent[index] = new CacheEntry(coordinate, hash, value, state);
         RebuildLookup();
     }
 
@@ -301,17 +363,43 @@ internal sealed class RecentChunkMap<TChunk> where TChunk : class
 
     private struct CacheEntry
     {
-        internal CacheEntry(ChunkCoordinate coordinate, int hash, TChunk value, ulong access)
+        internal CacheEntry(ChunkCoordinate coordinate, int hash, TChunk value, ResidencyState state)
         {
             Coordinate = coordinate;
             Hash = hash;
             Value = value;
-            Access = access;
+            State = state;
+            Access = state.LastAccessSequence;
         }
 
         internal ChunkCoordinate Coordinate;
         internal int Hash;
         internal TChunk? Value;
+        internal ResidencyState? State;
         internal ulong Access;
+    }
+
+    private sealed class ResidencyState
+    {
+        internal long EstimatedBytes;
+        internal ulong LastAccessSequence;
+        internal bool IsDirty;
+    }
+
+    internal readonly struct EvictionCandidate
+    {
+        internal EvictionCandidate(ChunkCoordinate coordinate, TChunk value,
+            bool isDirty, ulong lastAccessSequence)
+        {
+            Coordinate = coordinate;
+            Value = value;
+            IsDirty = isDirty;
+            LastAccessSequence = lastAccessSequence;
+        }
+
+        internal ChunkCoordinate Coordinate { get; }
+        internal TChunk Value { get; }
+        internal bool IsDirty { get; }
+        internal ulong LastAccessSequence { get; }
     }
 }

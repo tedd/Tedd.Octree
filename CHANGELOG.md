@@ -20,6 +20,11 @@ All notable changes to Tedd.Voxtree are documented here.
   power-of-two chunk sides, and hash-indexed ten-entry recent-chunk caches.
 - Morton-backed `HotOctreeChunk`/`HotOctreeChunk<T>` editors with chunk/world
   promotion, repeated mutable edits, and one-step octree commit or unmarking.
+- Disk-backed `WorldEntity`/`WorldEntity<T>` chunk persistence with atomic checked
+  files, coordinate sharding, direct/Brotli/Deflate/GZip/ZLib/Zstandard formats,
+  native .NET 11 Zstandard by default, and format-independent loading.
+- Per-chunk last-access sequences, dirty state, estimated resident-byte accounting,
+  dynamically configurable soft targets, and save-before-evict LRU trimming.
 - Exact-width generic voxel APIs for arbitrary `IBinaryInteger<TSelf>` values and
   unmanaged custom structs of 1, 2, 4, 8, or 16 bytes, including chunks,
   neighborhoods, spatial queries, dense layouts, and sparse worlds.

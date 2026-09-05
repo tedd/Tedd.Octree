@@ -38,7 +38,7 @@ public sealed partial class WorldEntity<T> where T : unmanaged
         var snapshot = hotChunk.BuildSnapshot();
         if (!_chunks.TryGetValue(coordinate, out var current) ||
             !ReferenceEquals(current, hotChunk.SourceChunk)) return false;
-        _chunks.Set(coordinate, snapshot);
+        _chunks.Set(coordinate, snapshot, snapshot.SerializedLength, isDirty: true);
         hotChunk.Complete(snapshot);
         return true;
     }

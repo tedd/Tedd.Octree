@@ -10,15 +10,15 @@
     <Version>2.0.0</Version>
     <PackageId>Tedd.Voxtree</PackageId>
     <Authors>Tedd Hansen</Authors>
-    <Description>Compact span-backed voxel octrees with allocation-free queries, multi-channel chunks, and signed global chunk coordinate systems.</Description>
+    <Description>Compact span-backed voxel octrees with allocation-free queries, multi-channel chunks, and disk-backed global chunk streaming.</Description>
     <Copyright>Copyright © Tedd Hansen</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/tedd/Tedd.Voxtree</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tedd/Tedd.Voxtree</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>octree;voxel;span;zero-allocation;performance</PackageTags>
-    <PackageReleaseNotes>Version 2 introduces span-backed builds/queries, spatial searches, linear/Morton dense blocks, multi-channel chunks, and bounded or effectively unbounded streamed worlds. Targets .NET 11 preview, .NET 10, and .NET Standard 2.1.</PackageReleaseNotes>
+    <PackageTags>octree;voxel;span;zero-allocation;performance;streaming;zstandard</PackageTags>
+    <PackageReleaseNotes>Version 2 introduces span-backed builds/queries, Morton hot chunks, multi-channel chunks, disk persistence, compressed LRU residency, and bounded or effectively unbounded streamed worlds. Targets .NET 11 preview, .NET 10, and .NET Standard 2.1.</PackageReleaseNotes>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>

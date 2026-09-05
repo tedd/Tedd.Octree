@@ -261,6 +261,61 @@ with `BeginWriteBatch` when readers require one consistent publication point.
 
 ## Save, unload, reload
 
+`WorldEntity` and `WorldEntity<T>` provide a disk-backed residency layer:
+
+```csharp
+var storage = new ChunkStorageOptions("world/chunks")
+{
+    Compression = ChunkCompression.Zstandard,
+    CompressionLevel = CompressionLevel.Fastest
+};
+var global = new WorldEntity(chunkSize: 32, channelCount: 4, storage,
+    maxResidentBytes: 512L * 1024 * 1024);
+
+global.SetChunk(-1, 0, 2, chunk);   // Resident and dirty.
+global.SaveChunk(-1, 0, 2);        // Atomic checked replacement; now clean.
+global.RemoveChunk(-1, 0, 2);
+bool found = global.TryGetOrLoadChunk(-1, 0, 2, out var reloaded);
+
+global.MaxResidentBytes = 256L * 1024 * 1024;
+int evicted = global.TrimToMemoryTarget();
+```
+
+Chunk paths are deterministically sharded into two coordinate-derived directory
+levels, avoiding a single unbounded directory. Each file records its coordinate,
+compression format, compressed and raw lengths, and CRC32. Raw lengths are bounded
+against the configured chunk schema before decompression. The payload is the same
+versioned chunk packet described below. Saves write a same-directory temporary file
+and atomically move or replace it, so an interrupted encoder does not truncate the
+previous file.
+
+`ChunkCompression` supports `Direct`, `Brotli`, `Deflate`, `GZip`, `ZLib`, and
+`Zstandard`. Zstandard is the default and uses the native .NET 11 implementation.
+It is deliberately reported as unsupported on earlier targets instead of silently
+writing another format. The .NET Standard 2.1 asset similarly excludes ZLib;
+Brotli, Deflate, GZip, and direct packets remain available. A file identifies its
+own format, so changing `ChunkStorageOptions.Compression` affects subsequent saves
+without invalidating older files. Replacing a world's `StorageOptions` marks every
+resident dirty so subsequent trimming first persists them under the new root.
+
+Every world lookup updates a monotonic `LastAccessSequence`; storage maintenance
+and metadata inspection do not. `EstimatedResidentBytes` totals serialized packet
+sizes. This intentionally stable metric excludes CLR object headers, dictionary
+capacity, shared backing-memory attribution, hot-editor buffers, and unrelated
+process memory. `MaxResidentBytes` is therefore a soft policy target, not an exact
+heap limit. Assigning it performs no I/O. `TrimToMemoryTarget` saves dirty LRU
+chunks before eviction; loads trim older chunks automatically but protect the
+requested chunk, permitting one oversized chunk to exceed the target. I/O and
+format failures throw, while `TryGetOrLoadChunk` returns false only when a chunk
+is neither resident nor stored.
+
+`WorldEntity` storage calls are synchronous and the type remains non-thread-safe.
+Coordinate external workers before loading, saving, trimming, or accessing it.
+An active hot editor retains an immutable source reference; eviction makes a later
+hot commit stale rather than restoring an evicted chunk.
+
+The bounded `OctreeWorld` retains its caller-controlled packet workflow:
+
 ```csharp
 if (world.TryGetChunk(0, 0, 0, out OctreeChunk? resident))
 {
@@ -376,6 +431,8 @@ manifest from `BranchCount` before enumeration.
 | Hot-chunk commit | Final channel arrays, descriptors, immutable chunk wrapper |
 | Chunk constructor / `FromEncoded` | Descriptors and wrapper; payloads borrowed |
 | `CopyEncodedTo` | 0 |
+| WorldEntity save/load | Packet, compression, and file buffers plus stream objects |
+| WorldEntity trim | Ordered candidate list; dirty eviction additionally has save costs |
 | World construction | Workspace/slot arrays, wrapper, and synchronization object; caller-memory overload omits arrays |
 | Load/evict/import, point/area/count queries, region enumeration | 0 after provisioning and lock warmup on each worker |
 | World dense extraction | 0 after destination provisioning and lock warmup |

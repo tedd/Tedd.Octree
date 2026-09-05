@@ -91,6 +91,40 @@ world.CommitHotChunk(-1, 0, 2, hot); // Re-encode once and replace the snapshot.
 each editor. The world continues exposing the immutable source until publication.
 `TryCommitHotChunk` rejects a stale source rather than overwriting a newer chunk.
 
+`WorldEntity` can persist chunks in a coordinate-sharded directory and maintain
+an estimated resident-byte target:
+
+```csharp
+var storage = new ChunkStorageOptions("world/chunks")
+{
+    Compression = ChunkCompression.Zstandard,
+    CompressionLevel = CompressionLevel.Fastest
+};
+var streamed = new WorldEntity(32, 4, storage, maxResidentBytes: 512L * 1024 * 1024);
+streamed.SetChunk(-1, 0, 2, chunk);       // New snapshots are dirty.
+streamed.SaveChunk(-1, 0, 2);            // Atomic checked file replacement.
+streamed.RemoveChunk(-1, 0, 2);
+streamed.TryGetOrLoadChunk(-1, 0, 2, out chunk);
+
+streamed.MaxResidentBytes = 256L * 1024 * 1024; // Dynamic soft target.
+int evicted = streamed.TrimToMemoryTarget();     // Save dirty LRU chunks, then evict.
+```
+
+Files record their compression format, coordinates, lengths, and CRC32, followed
+by the versioned chunk packet. The save preference therefore need not match the
+format of existing files. Supported formats are direct octree packets, Brotli,
+Deflate, GZip, ZLib, and Zstandard. Zstandard is the default and uses .NET 11's
+native implementation; select another format on earlier targets. ZLib is native
+on the .NET 10/11 targets but is unavailable through the .NET Standard 2.1 asset.
+
+`EstimatedResidentBytes` counts serialized chunk-packet bytes, not total CLR
+object or process memory. `MaxResidentBytes` is consequently a soft target.
+Assigning it is side-effect free; explicit trimming enforces a changed value,
+while storage loads trim older residents automatically and retain the requested
+chunk if it alone exceeds the target. World accessors advance each chunk's exact
+world-local `LastAccessSequence`; metadata inspection and `Chunks` enumeration do
+not. Storage operations are synchronous, and `WorldEntity` remains non-thread-safe.
+
 The dense source must contain exactly `count` values in this order:
 
 ```text

@@ -66,7 +66,7 @@ public sealed partial class WorldEntity<T> where T : unmanaged
         if (chunk is null) throw new ArgumentNullException(nameof(chunk));
         if (chunk.SideLength != ChunkSize || chunk.ChannelCount != ChannelCount)
             throw new ArgumentException("Chunk schema does not match the world entity.", nameof(chunk));
-        _chunks.Set(coordinate, chunk);
+        _chunks.Set(coordinate, chunk, chunk.SerializedLength, isDirty: true);
     }
 
     /// <summary>Gets a loaded chunk by chunk coordinate.</summary>
